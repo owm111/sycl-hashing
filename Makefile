@@ -9,7 +9,7 @@ documents = doc.ps doc.pdf
 junk = doc.ms *.nwt
 
 CXX = syclcc
-SYCLFLAGS =
+SYCLFLAGS = --hipsycl-targets=omp
 CPPFLAGS = -D_XOPEN_SOURCE=700
 CXXFLAGS = -std=c++17 -g -Wall -Wextra -Wpedantic $(SYCLFLAGS)
 
