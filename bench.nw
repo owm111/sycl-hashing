@@ -1,6 +1,85 @@
+.nr QI 7n
+.
+.TL
+Parallel Hash Benchmark
+.AU
+Owen McGrath
+.
+.AB
+This report documents the source code for the benchmark program in the
+beginning, and displays some results and findings at the end.
+.
+The benchmark measures the performance of several hashing algorithms
+(SHA-224, SHA-256, and BLAKE3) to fill a buffer with hashes of 64-bit
+integers running on the CPU and GPU.
+.
+It also compares the efficiency of different buffer sizes to generate
+a target total number of hashes.
+.AE
+.
+.EQ
+delim $$
+.EN
 @ .
 .NH 1
-Compiling
+Source Files and Structure
+.
+.PP
+The following list describes the list of files that are included in
+the repository, and descriptions of their purpose.
+.
+.IP "\f[B]Makefile\f[]" \[PI]
+Describes the build process for Make.
+.
+.IP "\f[B]flake.nix, flake.lock\f[]"
+A Nix flake that includes dependencies and a reproducible shell environment.
+.
+.IP "\f[B]*.nw\f[]"
+Literate source code for the program, script, and documentation.
+.
+.IP "\f[B]sha2*, blake3*\f[]"
+Source code for SHA-2 and BLAKE3 hash functions.
+.
+These were taken from implmentations found online, and modified to work
+with SYCL.
+.
+.PP
+As mentioned, this project uses Nix\** for dependency management and
+development environments.
+.
+Nix was chosen because it is able to pin package versions and build the
+same environment across operating systems.
+.
+No changes should be required to build and run the program when using
+the Nix shell.
+.
+.FS
+\%https://nixos.org\:
+.FE
+.
+.PP
+Also mentioned above, this project is written in a literate style,
+specifically using Noweb.\**
+.
+Literate programming allows source code to be included in the
+documentation and freely arranged in whatever order makes it easiest
+to understand.
+.
+Here, C++ source code, Bourne shell scripts, and troff documentation
+are all written in bench.nw.
+.
+The notangle command extracts the C++ code and shell script, and the
+noweave command formats the C++ and script code with troff macros so
+it can be built like any other troff document; see the makefile for
+more details.
+.
+.FS
+\%https://www.cs.tufts.edu/~nr/noweb/\:
+.FE
+.
+@ .
+.NH 1
+Compiling and Configuration
 .
 .PP
 Everything in this repository is built with Make.
@@ -10,7 +89,10 @@ to bootstrap compilation that way.
 .
 The makefile is designed to work out-of-the-box with the included Nix
 development shell.
-.
+<<Basic compilation example>>=
+nix develop
+make
+@ .
 .PP
 Compilation options can be customized with a file called config.mk.
 .
@@ -22,16 +104,18 @@ to compile an optimized binary that works on the CPU (its backend is
 OpenMP) and for an AMD Radeon RX 7000-series graphics card (its backend
 is HIP).
 .
-Information about what devices are available and the proper architecture
+.PP
+Information about what devices are available and their architectures
 can be found in the output of the \%hipsycl-info\: command.
 .
+.PP
 The [[-fno-stack-protector]] flag is necessary to compile for the GPU.
 <<config.mk example>>=
 CXXFLAGS += -march=native -O3 -fno-stack-protector
 SYCLFLAGS += '--hipsycl-targets=omp;hip:gfx1100' --hipsycl-use-accelerated-cpu
 @ .
 .PP
-TOOD: include an example for Intel DPC++.
+TODO: include an example for Intel DPC++.
 .
 .NH 1
 Benchmarking Program
@@ -536,5 +620,35 @@ See the SHA-224 section for an explanation.
 Benchmarking Script
 .
 .PP
+The \%run-bench.sh\: script automates the collection of data using
+the benchmark, and outputs the results in (TODO) format.
+.
+The data it collects compares the performance of both SHA-256 and BLAKE3
+running on both the CPU and GPU in parallel using different block sizes
+to generate the same total number of hashes.
+.
+The script takes four arguments:
+.
+.IP 1. 3n
+The total number of hashes to generate during each test.
+.
+.IP 2.
+The smallest block size in hashes.
+.
+.IP 3.
+The number of intermediate data points (i.e., total - 2).
+.
+.IP 4.
+The largest block size in hashes.
+.
+.EQ
+delim off
+.EN
+.PP
 <<run-bench.sh>>=
 #!/bin/sh
+
+total_hashes="${1?First argument: total number of hashes}"
+min_hashes="${2?Second argument: minimum block size in hashes}"
+intermediate="${3?Third argument: number of intermediate data points}"
+max_hashes="${4?Fourth argument: maximum block size in hashes}"

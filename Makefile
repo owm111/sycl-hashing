@@ -1,4 +1,4 @@
-literate = header.nw bench.nw
+literate = bench.nw
 sources = bench.cpp
 illiterate_sources = \
 	sha224.cpp sha256.cpp \
@@ -30,7 +30,7 @@ deepclean: clean
 	$(RM) $(sources) $(scripts) $(documents)
 
 doc.ms: $(literate)
-	noweave -filter btdefn -troff $^ >$@
+	noweave -filter btdefn -delay -troff $^ >$@
 
 doc.ps: doc.ms
 	noroff -Kutf8 -Tps -e -ms $^ >/dev/null
