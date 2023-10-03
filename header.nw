@@ -1,0 +1,10 @@
+.\" RP
+.ND
+.TL
+Parallel Hash Benchmark
+.AU
+Owen McGrath
+.
+.EQ
+delim $$
+.EN

@@ -1,0 +1,475 @@
+@ .
+.NH 1
+Benchmarking Program
+.
+.PP
+This section describes the usage of the benchmarking program and its
+source code.
+.
+XXX what does the benchmark program do?
+.
+The structure of the source file is listed below.
+<<bench.cpp>>=
+#include <cstdio>
+#include <cstdlib>
+#include <cstring>
+#include <ctime>
+#include <cstdint>
+#include <sycl/sycl.hpp>
+<<Additional headers>>
+<<Macro definitions>>
+<<Type definitions>>
+<<Function prototypes>>
+<<Global variables>>
+<<Function definitions>>
+int `main(int `argc, const char **`argv)
+{
+	<<Process arguments>>
+	<<Time the benchmark>>
+	<<Print the output>>
+	return 0;
+}
+@ .
+.PP
+The program supports the following hash algorithms and methods to generate
+the hashes.
+<<Type definitions>>=
+enum algorithm {SHA224, SHA256, BLAKE3};
+enum method {SERIAL, SYCL_CPU, SYCL_GPU};
+@ .
+.NH 2
+Usage
+.
+.PP
+The benchmark program requires four arguments:
+.
+.IP 1. 3n
+The number of hashes in each block. 
+.IP 2.
+The number of blocks.
+.IP 3.
+The hash algorithm to use.
+.IP 4.
+The method to generate the hashes.
+.
+.PP
+The program does not read the standard input or any files.
+.
+.PP
+As for output, the program writes its input parameters and the elapsed
+time to run a benchmark with them the standard output.
+.
+The following [[printf]] template is used.
+.
+Notice that tabs are use to separate the line into fields, and the
+meaningful fields are the second, fourth, sixth, eighth, and tenth.
+.
+This allows for the output to be easily parsed with cut, AWK, etc.
+<<Macro definitions>>=
+#define OUTPUT_TEMPLATE "hashes_per_block =\t%u\t" \
+	"num_blocks =\t%u\t" \
+	"algorithm =\t%s\t" \
+	"runner =\t%s\t" \
+	"elapsed (s) =\t%f\n"
+@ .
+.\"I didn't end up doing this
+.\".PP
+.\"If enabled at compile-time, the program will print its hashes on the
+.\"standard error.
+.\".
+.\"This is intended for debugging purposes.
+.\".
+.\"It can be enabled by passing [[PRINT_HASHES=1]] to Make when compiling.
+.
+.NH 2
+Argument Processing
+.
+.PP
+This subsection details the code for processing [[argv]].
+.
+The arguments listed above are stored in the following global variables,
+respectively.
+.
+Algorithms and methods are stored using enumerations defined earlier.
+.
+<<Global variables>>=
+static unsigned `hashes_per_block;
+static unsigned `num_blocks;
+static enum algorithm `algorithm;
+static enum method `method;
+@ .
+.PP
+If the incorrect number of arguments were given, then we print an error
+message and exit.
+.
+Currently, we are assuming that the user will have access to this
+documentation and will be able to find the usage information.
+<<Process arguments>>=
+if (argc != 5) {
+	fprintf(stderr, "%s: incorrect number of arguments.\n", argv[0]);
+	return 1;
+}
+@ .
+.PP
+Processing each argument takes several function calls.
+.
+Also, if there is an error processing the arguments, we want to exit
+with an error.
+.
+The below functions will handle these tasks.
+.
+They both take [[argv]] and the argument within [[argv]] to parse.
+.
+The [[parse_enumerator]] function also takes an array of valid enumerators
+and the number of valid enumerators; the parsed value is the index of
+the enumerator within the array.
+.
+Both functions return the parsed value.
+<<Function prototypes>>=
+static unsigned parse_unsigned(const char **argv, int arg_num);
+static int parse_enumerator(const char **argv, int arg_num,
+		const char **enumerators, const unsigned num_enumerators);
+@ .
+.PP
+The algorithm and method enumerations both need an array of enumerators
+for [[parse_enumerator]].
+.
+The order of strings within the array
+.I must
+match the order of enumerators within the enumeration definition.
+<<Global variables>>=
+static const char *algorithms[] = {"sha224", "sha256", "blake3"};
+static const char *methods[] = {"serial", "sycl-cpu", "sycl-gpu"};
+@ .
+.PP
+It will be useful to have a macro to take the length of an array.
+<<Macro definitions>>=
+#define LENGTH(arr) (sizeof(arr) / sizeof((arr)[0]))
+@ .
+.PP
+C++ wants additional casts for enumerators.
+<<Process arguments>>=
+hashes_per_block = parse_unsigned(argv, 1);
+num_blocks = parse_unsigned(argv, 2);
+algorithm = (enum algorithm)
+	parse_enumerator(argv, 3, algorithms, LENGTH(algorithms));
+method = (enum method)parse_enumerator(argv, 4, methods, LENGTH(algorithms));
+@ .
+.PP
+Parsing integers is simple using C’s [[sscanf]].
+.
+If it does not match any inputs items, which is the only case for failure
+here, it returns [[EOF]].
+.
+It cannot fail before the first match, because there is only one item
+to match.
+<<Function definitions>>=
+static unsigned `parse_unsigned(const char **argv, int arg_num)
+{
+	int rc;
+	unsigned result;
+	rc = sscanf(argv[arg_num], "%u", &result);
+	if (rc == EOF) {
+		fprintf(stderr, "%s: could not parse “%s” as an unsigned "
+			"integer\n", argv[0], argv[arg_num]);
+		exit(1);
+	}
+	return result;
+}
+@ .
+.PP
+Enumerators are parsed using a linear scan and C’s [[strcmp]].
+.
+There are ways to make this more efficient, but it probably does not
+matter.
+.
+Printing the list of enuemrators as part of the error message is
+non-trivial, and possibly unnecessary.
+<<Function definitions>>=
+static int `parse_enumerator(const char **argv, int arg_num,
+		const char **enumerators, const unsigned num_enumerators)
+{
+	unsigned i;
+	for (i = 0; i < num_enumerators; i++)
+		if (strcmp(argv[arg_num], enumerators[i]) == 0)
+			return i;
+	fprintf(stderr, "%s: could not match “%s” to ",
+			argv[0], argv[arg_num]);
+	for (i = 0; i < num_enumerators - 1; i++)
+		fprintf(stderr, "“%s”, ", enumerators[i]);
+	fprintf(stderr, "or “%s”.\n", enumerators[i]);
+	exit(1);
+	return 0;
+}
+@ .
+.NH 2
+Timing the Benchmark
+.
+.PP
+The POSIX clock interface is used to get the time before and after the
+hashes are generated.
+.
+Since only a relative time is required, [[CLOCK_MONOTONIC]] is sufficient.
+.
+The elapsed time is stored in the variable [[elapsed]].
+<<Time the benchmark>>=
+double elapsed;
+struct timespec start, end;
+clock_gettime(CLOCK_MONOTONIC, &start);
+<<Run the benchmark>>
+clock_gettime(CLOCK_MONOTONIC, &end);
+`elapsed = (double)end.tv_sec - (double)start.tv_sec;
+elapsed += ((double)end.tv_nsec - (double)start.tv_nsec) / 1e12L;
+@ .
+.NH 2
+Printing the Output
+.
+.PP
+All of the variables that are needed for output have been defined.
+.
+The string names for the algorithm and method are printed instead of
+their enumerator’s number.
+<<Print the output>>=
+printf(OUTPUT_TEMPLATE, hashes_per_block, num_blocks,
+		algorithms[algorithm], methods[method], elapsed);
+@ .
+.NH 2
+Supporting Different Hash Algorithms
+.
+.PP
+The goal is to support several different hash algorithms and compare
+their performance.
+.
+The following function will be used to dispatch the correct hash
+function according the algorithm, and ensure the result is written to
+[[buf[slot]]].
+<<Function prototypes>>=
+static void run_hash(uint64_t input, unsigned char *buf, unsigned slot);
+@ .
+.PP
+The downside of this approach is that the algorithm is checked every
+time a hash is generated.
+.
+This could be avoided by calling a function that is set to the appropriate
+hash function, but SYCL does not support calling function pointers in
+its kernels.
+<<Function definitions>>=
+static void `run_hash(uint64_t input, unsigned char *buf, unsigned slot)
+{
+	switch (algorithm) {
+	case SHA224:
+		<<Hash [[input]] to [[buf[slot]]] with SHA-224>>
+		break;
+	case SHA256:
+		<<Hash [[input]] to [[buf[slot]]] with SHA-256>>
+		break;
+	case BLAKE3:
+		<<Hash [[input]] to [[buf[slot]]] with BLAKE3>>
+		break;
+	}
+}
+@ .
+.NH 2
+Supporting Different Running Methods
+.
+.PP
+The other feature of this program is that it supports several drivers
+to run the has generation code.
+.
+Some runners may require common, local variables.
+<<Run the benchmark>>=
+<<Local declarations for the runner>>
+switch (method) {
+case SERIAL:
+	<<Run benchmark in serial>>
+	break;
+case SYCL_CPU:
+	<<Run benchmark with SYCL on the CPU>>
+	break;
+case SYCL_GPU:
+	<<Run benchmark with SYCL on the GPU>>
+	break;
+}
+<<Delete any local declarations>>
+@ .
+.PP
+Something that all of the runners will need is a buffer to write the
+hashes to.
+.
+This requires knowing the size of each hash in bytes.
+.
+They are stored in the [[digest_size]] array.
+<<Local declarations for the runner>>=
+unsigned char *output_buffer =
+		new unsigned char[hashes_per_block * digest_size[algorithm]];
+<<Delete any local declarations>>=
+delete[] output_buffer;
+<<Global variables>>=
+static const unsigned digest_size[] = {28u, 32u, 32u};
+@ .
+.NH 2
+Running in Serial
+.
+.PP
+Running in serial is simple.
+<<Run benchmark in serial>>=
+for (uint64_t i = 0; i < hashes_per_block * num_blocks; i++)
+	run_hash(i, output_buffer, i % hashes_per_block);
+@ .
+.NH 2
+Running with SYCL
+.
+.PP
+All of SYCL’s identifiers are from the [[sycl]] namespace, but they
+do not collide with anything already in scope.
+<<Local declarations for the runner>>=
+using sycl::event;
+using sycl::id;
+using sycl::malloc_device;
+using sycl::queue;
+using sycl::range;
+@ .
+.PP
+The code for running the benchmark using SYCL on the CPU and GPU is the
+same, except for the selector that gets passed to the constructor for
+[[sycl::queue]].
+.
+The selector does not have a simple type as far as I know.
+.
+Therefore, it seems like smallest solution to this problem is to declare
+the queue as a pointer, and initialize it when needed.
+.
+It would be good practice to delete it at some point, but it is fine to
+live throughout the program’s lifetime.
+<<Local declarations for the runner>>=
+queue *`q = nullptr;
+<<Run benchmark with SYCL on the CPU>>=
+`q = new queue(sycl::cpu_selector_v);
+<<Run benchmark with SYCL>>
+<<Run benchmark with SYCL on the GPU>>=
+`q = new queue(sycl::gpu_selector_v);
+<<Run benchmark with SYCL>>
+<<Delete any local declarations>>=
+delete q;
+@ .
+.PP
+Each block of hashes will be offloaded separately, in serial.
+.
+SYCL needs its own buffer allocated on the device, [[sycl_buffer]].
+.
+TODO: does [[sycl_buffer]] need to be freed somehow?
+.
+Several local variables are needed, including [[sycl_buffer]] and this a
+[[switch]] case, so it is best to create a new scope.
+<<Run benchmark with SYCL>>=
+{
+unsigned buffer_size = hashes_per_block * digest_size[algorithm];
+unsigned char *sycl_buffer = malloc_device<unsigned char>(buffer_size, *q);
+<<Ensure [[sycl_buffer]] allocation was successful>>
+for (uint64_t i = 0, base = 0; i < num_blocks; i++, base += hashes_per_block) {
+	<<Offload hashing and copy back>>
+}
+}
+@ .
+.PP
+The call to [[sycl_buffer]] can fail, and it’s painful to debug without
+a warning.
+<<Ensure [[sycl_buffer]] allocation was successful>>=
+if (sycl_buffer == nullptr) {
+	fprintf(stderr, "sycl::malloc_device failed when called %u bytes were "
+			"requested.\n", buffer_size);
+	exit(1);
+}
+@ .
+.PP
+Hashes are offloaded with a parallel for loop, and copied back via
+[[queue::memcpy]].
+.
+The last event, the copy, must be explicitly waited for.
+<<Offload hashing and copy back>>=
+event hashes_ev = q->parallel_for(range<1>(hashes_per_block), [=] (id<1> idx) {
+	run_hash(base + idx, sycl_buffer, idx);
+});
+event copy_ev = q->memcpy(output_buffer, sycl_buffer, buffer_size, hashes_ev);
+copy_ev.wait();
+@ .
+.NH 2
+SHA-224 Hash Algorithm
+.
+.PP
+The SHA-224 algorithm used here comes from an implementation I found
+online.
+.
+The only meaningful change that I made was adding [[SYCL_EXTERNAL]]
+to functions and including the SYCL header.
+.
+That implementation is not documented here, and came from the link below.
+.
+.QP
+\%http://www.zedwood.com/article/cpp-sha224-function\:
+.
+.PP
+There are some optimizations that could be made with a custom
+implementation, because we know exactly how long the message is, etc.
+<<Additional headers>>=
+#include "sha224.hpp"
+@ .
+.PP
+Using this implementation requires only the following function calls.
+.
+The hash algorithms are implemented in [[switch]] case bodies, so a new
+scope is needed to declare local variables well.
+<<Hash [[input]] to [[buf[slot]]] with SHA-224>>=
+{
+	class SHA224 ctx;
+	ctx.init();
+	ctx.update((const unsigned char *)&input, sizeof(input));
+	ctx.final(buf + slot * digest_size[algorithm]);
+}
+@ .
+.NH 2
+SHA-256 Hash Algorithm
+.
+.PP
+I modified the SHA-224 implementation to be SHA-256.
+.
+I have not completely verified that it is correct.
+<<Additional headers>>=
+#include "sha256.hpp"
+<<Hash [[input]] to [[buf[slot]]] with SHA-256>>=
+{
+	class SHA256 ctx;
+	ctx.init();
+	ctx.update((const unsigned char *)&input, sizeof(input));
+	ctx.final(buf + slot * digest_size[algorithm]);
+}
+@ .
+.NH 2
+BLAKE3 Hash Algorithm
+.
+.PP
+The BLAKE3 implementation comes from the BLAKE3 reference implemenation.
+.
+It had to be modified slightly to work with C++ and SYCL.
+<<Additional headers>>=
+#include "blake3.h"
+@ .
+.PP
+The interface for BLAKE3 uses different names and arguments than SHA-2,
+but functionally the same otherwise.
+<<Hash [[input]] to [[buf[slot]]] with BLAKE3>>=
+{
+	blake3_hasher hasher;
+	blake3_hasher_init(&hasher);
+	blake3_hasher_update(&hasher, &input, sizeof(input));
+	blake3_hasher_finalize(&hasher,
+			buf + slot * digest_size[algorithm],
+			digest_size[algorithm]);
+}
+@ .
+.NH 1
+Benchmarking Script
+.
+.PP
+<<run-bench.sh>>=
+#!/bin/sh
