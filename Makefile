@@ -9,13 +9,15 @@ documents = doc.ps doc.pdf
 junk = doc.ms *.nwt
 
 CXX = syclcc
-SYCLFLAGS = --hipsycl-targets='omp'
+SYCLFLAGS =
 CPPFLAGS = -D_XOPEN_SOURCE=700
 CXXFLAGS = -std=c++17 -g -Wall -Wextra -Wpedantic $(SYCLFLAGS)
 
 # These are needed to make blake3 compile without needing 4+ additional files
 CPPFLAGS += \
 	-DBLAKE3_NO_SSE2 -DBLAKE3_NO_SSE41 -DBLAKE3_NO_AVX2 -DBLAKE3_NO_AVX512
+
+-include config.mk
 
 .PHONY: all clean deepclean
 
@@ -37,7 +39,7 @@ doc.ps: doc.ms
 doc.pdf: doc.ps
 	ps2pdf $< $@
 
-bench: $(sources) $(illiterate_sources)
+bench: $(sources) # $(illiterate_sources)
 
 $(sources) $(scripts): $(literate)
 	for x in $(sources); do \

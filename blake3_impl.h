@@ -29,13 +29,13 @@ enum blake3_flags {
 #endif
 
 #if defined(__x86_64__) || defined(_M_X64) 
-#define IS_X86
-#define IS_X86_64
+/* #define IS_X86 */
+/* #define IS_X86_64 */
 #endif
 
 #if defined(__i386__) || defined(_M_IX86)
-#define IS_X86
-#define IS_X86_32
+/* #define IS_X86 */
+/* #define IS_X86_32 */
 #endif
 
 #if defined(__aarch64__) || defined(_M_ARM64)

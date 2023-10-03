@@ -1,5 +1,39 @@
 @ .
 .NH 1
+Compiling
+.
+.PP
+Everything in this repository is built with Make.
+.
+The makefile is not included in this document, because it is difficult
+to bootstrap compilation that way.
+.
+The makefile is designed to work out-of-the-box with the included Nix
+development shell.
+.
+.PP
+Compilation options can be customized with a file called config.mk.
+.
+It is loaded by the makefile after the compilation variables are set,
+so config.mk can modify them.
+.
+Below is an example config.mk that configures AdapativeCpp (f/k/a hipSYCL)
+to compile an optimized binary that works on the CPU (its backend is
+OpenMP) and for an AMD Radeon RX 7000-series graphics card (its backend
+is HIP).
+.
+Information about what devices are available and the proper architecture
+can be found in the output of the \%hipsycl-info\: command.
+.
+The [[-fno-stack-protector]] flag is necessary to compile for the GPU.
+<<config.mk example>>=
+CXXFLAGS += -march=native -O3 -fno-stack-protector
+SYCLFLAGS += '--hipsycl-targets=omp;hip:gfx1100' --hipsycl-use-accelerated-cpu
+@ .
+.PP
+TOOD: include an example for Intel DPC++.
+.
+.NH 1
 Benchmarking Program
 .
 .PP
@@ -243,8 +277,12 @@ their performance.
 The following function will be used to dispatch the correct hash
 function according the algorithm, and ensure the result is written to
 [[buf[slot]]].
+.
+The algorithm must be passed explicitly, otherwise the SYCL compiler
+will complain.
 <<Function prototypes>>=
-static void run_hash(uint64_t input, unsigned char *buf, unsigned slot);
+static void run_hash(enum algorithm algorithm, uint64_t input,
+		unsigned char *buf, unsigned slot);
 @ .
 .PP
 The downside of this approach is that the algorithm is checked every
@@ -254,7 +292,8 @@ This could be avoided by calling a function that is set to the appropriate
 hash function, but SYCL does not support calling function pointers in
 its kernels.
 <<Function definitions>>=
-static void `run_hash(uint64_t input, unsigned char *buf, unsigned slot)
+static void `run_hash(enum algorithm algorithm, uint64_t input,
+		unsigned char *buf, unsigned slot)
 {
 	switch (algorithm) {
 	case SHA224:
@@ -314,7 +353,7 @@ Running in Serial
 Running in serial is simple.
 <<Run benchmark in serial>>=
 for (uint64_t i = 0; i < hashes_per_block * num_blocks; i++)
-	run_hash(i, output_buffer, i % hashes_per_block);
+	run_hash(algorithm, i, output_buffer, i % hashes_per_block);
 @ .
 .NH 2
 Running with SYCL
@@ -386,9 +425,13 @@ Hashes are offloaded with a parallel for loop, and copied back via
 [[queue::memcpy]].
 .
 The last event, the copy, must be explicitly waited for.
+.
+The algorithm must be a local variable, otherwise the SYCL compiler
+will complain.
 <<Offload hashing and copy back>>=
+enum algorithm alg = algorithm;
 event hashes_ev = q->parallel_for(range<1>(hashes_per_block), [=] (id<1> idx) {
-	run_hash(base + idx, sycl_buffer, idx);
+	run_hash(alg, base + idx, sycl_buffer, idx);
 });
 event copy_ev = q->memcpy(output_buffer, sycl_buffer, buffer_size, hashes_ev);
 copy_ev.wait();
@@ -400,8 +443,8 @@ SHA-224 Hash Algorithm
 The SHA-224 algorithm used here comes from an implementation I found
 online.
 .
-The only meaningful change that I made was adding [[SYCL_EXTERNAL]]
-to functions and including the SYCL header.
+.\"The only meaningful change that I made was adding [[SYCL_EXTERNAL]]
+.\"to functions and including the SYCL header.
 .
 That implementation is not documented here, and came from the link below.
 .
@@ -427,6 +470,16 @@ scope is needed to declare local variables well.
 	ctx.final(buf + slot * digest_size[algorithm]);
 }
 @ .
+.PP
+As it turns out [[SYCL_EXTERNAL]] is not universal, and everything
+.I must
+be in the same translation to be portable across SYCL compilers, it seems.
+.
+Although the below strategy works, it’s bad practice and should be
+replaced.
+<<Additional headers>>=
+#include "sha224.cpp"
+@ .
 .NH 2
 SHA-256 Hash Algorithm
 .
@@ -443,6 +496,11 @@ I have not completely verified that it is correct.
 	ctx.update((const unsigned char *)&input, sizeof(input));
 	ctx.final(buf + slot * digest_size[algorithm]);
 }
+@ .
+.PP
+See the SHA-224 section for an explanation.
+<<Additional headers>>=
+#include "sha256.cpp"
 @ .
 .NH 2
 BLAKE3 Hash Algorithm
@@ -466,6 +524,13 @@ but functionally the same otherwise.
 			buf + slot * digest_size[algorithm],
 			digest_size[algorithm]);
 }
+@ .
+.PP
+See the SHA-224 section for an explanation.
+<<Additional headers>>=
+#include "blake3.cpp"
+#include "blake3_dispatch.cpp"
+#include "blake3_portable.cpp"
 @ .
 .NH 1
 Benchmarking Script
