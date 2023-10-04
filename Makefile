@@ -31,7 +31,7 @@ deepclean: clean
 	$(RM) $(sources) $(scripts) $(documents)
 
 doc.ms: $(literate)
-	noweave -filter btdefn -delay -x -troff $^ >$@
+	noweave -filter btdefn -delay -troff $^ >$@
 
 doc.ps: doc.ms $(pictures)
 	noroff -G -Kutf8 -Tps -e -ms -p $< >/dev/null
