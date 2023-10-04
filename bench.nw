@@ -200,7 +200,7 @@ This allows for the output to be easily parsed with cut, AWK, etc.
 .\".
 .\"This is intended for debugging purposes.
 .\".
-.\"It can be enabled by passing [[PRINT_HASHES=1]] to Make when compiling.
+.\"It can be enabled by passing PRINT_HASHES=1 to Make when compiling.
 .
 .NH 2
 Argument Processing
@@ -527,16 +527,15 @@ copy_ev.wait();
 SHA-224 Hash Algorithm
 .
 .PP
-The SHA-224 algorithm used here comes from an implementation I found
-online.
+The SHA-224 algorithm used here comes from an implementation that I found
+online.\**
 .
-.\"The only meaningful change that I made was adding [[SYCL_EXTERNAL]]
+.\"The only meaningful change that I made was adding SYCL_EXTERNAL
 .\"to functions and including the SYCL header.
 .
-That implementation is not documented here, and came from the link below.
-.
-.QP
+.FS
 \%http://www.zedwood.com/article/cpp-sha224-function\:
+.FE
 .
 .PP
 There are some optimizations that could be made with a custom
