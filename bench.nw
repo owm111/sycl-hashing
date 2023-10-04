@@ -38,10 +38,13 @@ A Nix flake that includes dependencies and a reproducible shell environment.
 Literate source code for the program, script, and documentation.
 .
 .IP "\f[B]sha2*, blake3*\f[]"
-Source code for SHA-2 and BLAKE3 hash functions.
+Source code and headers for the SHA-2 and BLAKE3 hash functions.
 .
 These were taken from implmentations found online, and modified to work
 with SYCL.
+.
+.IP "\f[B]*.d\f[]"
+Graphs for this report in grap(1) format.
 .
 .PP
 As mentioned, this project uses Nix\** for dependency management and
@@ -617,29 +620,22 @@ See the SHA-224 section for an explanation.
 #include "blake3_portable.cpp"
 @ .
 .NH 1
-Benchmarking Script
+Benchmarking Scripts
 .
 .PP
 The \%run-bench.sh\: script automates the collection of data using
-the benchmark, and outputs the results in (TODO) format.
+the benchmark, and outputs the results to the file \%bench-results\:.
 .
-The data it collects compares the performance of both SHA-256 and BLAKE3
-running on both the CPU and GPU in parallel using different block sizes
-to generate the same total number of hashes.
+It generates 16GiB of hashes using varying block sizes, with SHA-256
+and BLAKE3 hashes, and on the CPU and GPU.
 .
-The script takes four arguments:
+TODO check your math on the sizes...
 .
-.IP 1. 3n
-The total number of hashes to generate during each test.
+.PP
+It fails for the huge buffer sizes.
 .
-.IP 2.
-The smallest block size in hashes.
-.
-.IP 3.
-The number of intermediate data points (i.e., total - 2).
-.
-.IP 4.
-The largest block size in hashes.
+This should be investigated, but it does not appear to affect the
+completion of the script or the results.
 .
 .EQ
 delim off
@@ -648,7 +644,93 @@ delim off
 <<run-bench.sh>>=
 #!/bin/sh
 
-total_hashes="${1?First argument: total number of hashes}"
-min_hashes="${2?Second argument: minimum block size in hashes}"
-intermediate="${3?Third argument: number of intermediate data points}"
-max_hashes="${4?Fourth argument: maximum block size in hashes}"
+while read -r x y
+do
+	./bench $x $y sha256 sycl-cpu
+	./bench $x $y sha256 sycl-gpu
+	./bench $x $y blake3 sycl-cpu
+	./bench $x $y blake3 sycl-gpu
+done <<EOF | tee bench-results
+1024	262144
+2048	131072
+4096	65536
+8192	32768
+16384	16384
+32768	8192
+65536	4096
+131072	2048
+262144	1024
+524288	512
+1048576	256
+2097152	128
+4194304	64
+8388608	32
+16777216	16
+33554432	8
+67108864	4
+134217728	2
+268435456	1
+EOF
+@ .
+.PP
+The following Haskell program was used to generate the inputs for the
+above script, which were manually copied in.
+.
+This could be written as a shell script and included in \%run-bench.sh\:,
+so no manual copying is needed.
+<<Generate inputs>>=
+digestSize = div 512 8
+blockSizes = [y | x <- [0 .. 34], let y = div (2 ^ x) digestSize, y >= 1024]
+maxBlockSize = maximum blockSizes
+blockCounts = map (div maxBlockSize) blockSizes
+outputs = zipWith (\s c -> shows s ('\t' : show c)) blockSizes blockCounts
+main = mapM_ putStrLn outputs
+@ .
+.PP
+The following script can be used to convert the output of the benchmark
+script to a grap(1) graph, suitable to
+.CW copy
+in \%bench.nw\:.
+.
+See the results section of that file to see how to use the output of
+this script.
+<<to-grap.sh>>=
+#!/bin/sh
+echo 'label left "Real Time" "(s)"'
+echo 'label bot "Block Size"'
+echo 'coord y 0, 22 log x'
+echo -n 'ticks bot out at 1024 "64KiB", 4096 "256KiB", 16384 "1MiB", '
+echo -n '65536 "4MiB", 262144 "16MiB", 1048576 "64MiB", 4194304 "256MiB", '
+echo '16777216 "1GiB", 67108864 "4GiB"'
+echo '"\(sq SHA-256, CPU" ljust at (1e6,20)'
+echo '"\(pl SHA-256, GPU" ljust at (1e6,19)'
+echo '"\(*D BLAKE3, CPU" ljust at (1e6,18)'
+echo '"\(mu BLAKE3, GPU" ljust at (1e6,17)'
+awk '-F\t' '
+	/cpu/ && /sha/ {char = "sq"}
+	/gpu/ && /sha/ {char = "pl"}
+	/cpu/ && /blake/ {char = "*D"}
+	/gpu/ && /blake/ {char = "mu"}
+	{printf "\"\\(%s\" at (%f,%f)\n", char, $2, $10}
+'
+@ .
+.NH 1
+Results
+.
+.PP
+Below is a graph of the results from running the benchmark on my personal
+computer (AMD R7 3700X, 32GB DDR4-3200 RAM, Radeon RX 7900 XTX), compiled
+using AdapativeCpp with
+.CW -O3
+and
+.CW -march=native .
+.
+.EQ
+delim on
+.EN
+.G1
+# groff doesn't include grap, but p9p does
+frame ht 3 wid 4
+label top "Time to Generate 16GiB of Hashes" "on a Personal Computer"
+copy "bench-results-pc.d"
+.G2

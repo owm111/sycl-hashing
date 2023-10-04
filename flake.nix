@@ -44,9 +44,10 @@
     devShells = self.lib.pkgsForEachDefaults {
       default = pkgs: sys: pkgs.mkShell {
         nativeBuildInputs = with pkgs; [
-          pkgs.ghostscript_headless
+          pkgs.ghostscript_headless # for ps2pdf
           pkgs.groff
           pkgs.opensyclWithRocm
+          pkgs.plan9port # for grap
           self.packages.${sys}.noweb
         ];
       };

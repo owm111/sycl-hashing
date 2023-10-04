@@ -3,8 +3,9 @@ sources = bench.cpp
 illiterate_sources = \
 	sha224.cpp sha256.cpp \
 	blake3.cpp blake3_dispatch.cpp blake3_portable.cpp
-scripts = run-bench.sh
+scripts = run-bench.sh to-grap.sh
 programs = bench
+pictures = bench-results-pc.d
 documents = doc.ps doc.pdf
 junk = doc.ms *.nwt
 
@@ -30,11 +31,11 @@ deepclean: clean
 	$(RM) $(sources) $(scripts) $(documents)
 
 doc.ms: $(literate)
-	noweave -filter btdefn -delay -troff $^ >$@
+	noweave -filter btdefn -delay -x -troff $^ >$@
 
-doc.ps: doc.ms
-	noroff -Kutf8 -Tps -e -ms $^ >/dev/null
-	noroff -Kutf8 -Tps -e -ms $^ >$@
+doc.ps: doc.ms $(pictures)
+	noroff -G -Kutf8 -Tps -e -ms -p $< >/dev/null
+	noroff -G -Kutf8 -Tps -e -ms -p $< >$@
 
 doc.pdf: doc.ps
 	ps2pdf $< $@
