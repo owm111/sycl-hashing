@@ -1,12 +1,7 @@
-.NH 1
-Benchmarking Program
-.
-.PP
+\section{Benchmarking Program}
 This section describes the usage of the benchmarking program and its
 source code.
-.
 XXX what does the benchmark program do?
-.
 The structure of the source file is listed below.
 <<bench.cpp>>=
 #include <cstdio>
@@ -28,138 +23,80 @@ int `main(int `argc, const char **`argv)
 	<<Print the output>>
 	return 0;
 }
-@ .
-.PP
-The program supports the following hash algorithms and methods to generate
-the hashes.
+@ The program supports the following hash algorithms and methods to
+generate the hashes.
 <<Type definitions>>=
 enum algorithm {SHA224, SHA256, BLAKE3};
 enum method {SERIAL, SYCL_CPU, SYCL_GPU};
-@ .
-.NH 2
-Usage
-.
-.PP
-The benchmark program requires four arguments:
-.
-.IP 1. 3n
-The number of hashes in each block. 
-.IP 2.
-The number of blocks.
-.IP 3.
-The hash algorithm to use.
-.IP 4.
-The method to generate the hashes.
-.
-.PP
-The program does not read the standard input or any files.
-.
-.PP
-As for output, the program writes its input parameters and the elapsed
-time to run a benchmark with them the standard output.
-.
-The following [[printf]] template is used.
-.
-Notice that tabs are use to separate the line into fields, and the
-meaningful fields are the second, fourth, sixth, eighth, and tenth.
-.
-This allows for the output to be easily parsed with cut, AWK, etc.
+@ The following [[printf]] template is used for printing output to the
+standard output.
 <<Macro definitions>>=
 #define OUTPUT_TEMPLATE "hashes_per_block =\t%u\t" \
 	"num_blocks =\t%u\t" \
 	"algorithm =\t%s\t" \
 	"runner =\t%s\t" \
 	"elapsed (s) =\t%f\n"
-@ .
-.\"I didn't end up doing this
-.\".PP
-.\"If enabled at compile-time, the program will print its hashes on the
-.\"standard error.
-.\".
-.\"This is intended for debugging purposes.
-.\".
-.\"It can be enabled by passing PRINT_HASHES=1 to Make when compiling.
-.
-.NH 2
-Argument Processing
-.
-.PP
+@
+%I didn't end up doing this
+%.PP
+%If enabled at compile-time, the program will print its hashes on the
+%standard error.
+%.
+%This is intended for debugging purposes.
+%.
+%It can be enabled by passing PRINT_HASHES=1 to Make when compiling.
+@ \subsection{Argument Processing}
 This subsection details the code for processing [[argv]].
-.
 The arguments listed above are stored in the following global variables,
 respectively.
-.
 Algorithms and methods are stored using enumerations defined earlier.
-.
 <<Global variables>>=
 static unsigned `hashes_per_block;
 static unsigned `num_blocks;
 static enum algorithm `algorithm;
 static enum method `method;
-@ .
-.PP
-If the incorrect number of arguments were given, then we print an error
+@ If the incorrect number of arguments were given, then we print an error
 message and exit.
-.
-Currently, we are assuming that the user will have access to this
+Currently, we are assuming that the user will have access to the
 documentation and will be able to find the usage information.
 <<Process arguments>>=
 if (argc != 5) {
 	fprintf(stderr, "%s: incorrect number of arguments.\n", argv[0]);
 	return 1;
 }
-@ .
-.PP
-Processing each argument takes several function calls.
-.
+@ Processing each argument takes several function calls.
 Also, if there is an error processing the arguments, we want to exit
 with an error.
-.
 The below functions will handle these tasks.
-.
 They both take [[argv]] and the argument within [[argv]] to parse.
-.
 The [[parse_enumerator]] function also takes an array of valid enumerators
 and the number of valid enumerators; the parsed value is the index of
 the enumerator within the array.
-.
 Both functions return the parsed value.
 <<Function prototypes>>=
 static unsigned parse_unsigned(const char **argv, int arg_num);
 static int parse_enumerator(const char **argv, int arg_num,
 		const char **enumerators, const unsigned num_enumerators);
-@ .
-.PP
-The algorithm and method enumerations both need an array of enumerators
+@ The algorithm and method enumerations both need an array of enumerators
 for [[parse_enumerator]].
-.
-The order of strings within the array
-.I must
-match the order of enumerators within the enumeration definition.
+The order of strings within the array {\tt must} match the order of
+enumerators within the enumeration definition.
 <<Global variables>>=
 static const char *algorithms[] = {"sha224", "sha256", "blake3"};
 static const char *methods[] = {"serial", "sycl-cpu", "sycl-gpu"};
-@ .
-.PP
-It will be useful to have a macro to take the length of an array.
+@ It will be useful to have a macro to take the length of an array.
 <<Macro definitions>>=
 #define LENGTH(arr) (sizeof(arr) / sizeof((arr)[0]))
-@ .
-.PP
-C++ wants additional casts for enumerators.
+@ C++ wants additional casts for enumerators.
 <<Process arguments>>=
 hashes_per_block = parse_unsigned(argv, 1);
 num_blocks = parse_unsigned(argv, 2);
 algorithm = (enum algorithm)
 	parse_enumerator(argv, 3, algorithms, LENGTH(algorithms));
 method = (enum method)parse_enumerator(argv, 4, methods, LENGTH(algorithms));
-@ .
-.PP
-Parsing integers is simple using C’s [[sscanf]].
-.
+@ Parsing integers is simple using C’s [[sscanf]].
 If it does not match any inputs items, which is the only case for failure
 here, it returns [[EOF]].
-.
 It cannot fail before the first match, because there is only one item
 to match.
 <<Function definitions>>=
@@ -175,13 +112,9 @@ static unsigned `parse_unsigned(const char **argv, int arg_num)
 	}
 	return result;
 }
-@ .
-.PP
-Enumerators are parsed using a linear scan and C’s [[strcmp]].
-.
+@ Enumerators are parsed using a linear scan and C’s [[strcmp]].
 There are ways to make this more efficient, but it probably does not
 matter.
-.
 Printing the list of enuemrators as part of the error message is
 non-trivial, and possibly unnecessary.
 <<Function definitions>>=
@@ -200,16 +133,10 @@ static int `parse_enumerator(const char **argv, int arg_num,
 	exit(1);
 	return 0;
 }
-@ .
-.NH 2
-Timing the Benchmark
-.
-.PP
+@ \subsection{Timing the Benchmark}
 The POSIX clock interface is used to get the time before and after the
 hashes are generated.
-.
 Since only a relative time is required, [[CLOCK_MONOTONIC]] is sufficient.
-.
 The elapsed time is stored in the variable [[elapsed]].
 <<Time the benchmark>>=
 double elapsed;
@@ -219,40 +146,26 @@ clock_gettime(CLOCK_MONOTONIC, &start);
 clock_gettime(CLOCK_MONOTONIC, &end);
 `elapsed = (double)end.tv_sec - (double)start.tv_sec;
 elapsed += ((double)end.tv_nsec - (double)start.tv_nsec) / 1e12L;
-@ .
-.NH 2
-Printing the Output
-.
-.PP
+@ \subsection{Printing the Output}
 All of the variables that are needed for output have been defined.
-.
 The string names for the algorithm and method are printed instead of
 their enumerator’s number.
 <<Print the output>>=
 printf(OUTPUT_TEMPLATE, hashes_per_block, num_blocks,
 		algorithms[algorithm], methods[method], elapsed);
-@ .
-.NH 2
-Supporting Different Hash Algorithms
-.
-.PP
+@ \subsection{Supporting Different Hash Algorithms}
 The goal is to support several different hash algorithms and compare
 their performance.
-.
 The following function will be used to dispatch the correct hash
 function according the algorithm, and ensure the result is written to
 [[buf[slot]]].
-.
 The algorithm must be passed explicitly, otherwise the SYCL compiler
 will complain.
 <<Function prototypes>>=
 static void run_hash(enum algorithm algorithm, uint64_t input,
 		unsigned char *buf, unsigned slot);
-@ .
-.PP
-The downside of this approach is that the algorithm is checked every
+@ The downside of this approach is that the algorithm is checked every
 time a hash is generated.
-.
 This could be avoided by calling a function that is set to the appropriate
 hash function, but SYCL does not support calling function pointers in
 its kernels.
@@ -272,14 +185,9 @@ static void `run_hash(enum algorithm algorithm, uint64_t input,
 		break;
 	}
 }
-@ .
-.NH 2
-Supporting Different Running Methods
-.
-.PP
+@ \subsection{Supporting Different Running Methods}
 The other feature of this program is that it supports several drivers
 to run the has generation code.
-.
 Some runners may require common, local variables.
 <<Run the benchmark>>=
 <<Local declarations for the runner>>
@@ -295,13 +203,9 @@ case SYCL_GPU:
 	break;
 }
 <<Delete any local declarations>>
-@ .
-.PP
-Something that all of the runners will need is a buffer to write the
+@ Something that all of the runners will need is a buffer to write the
 hashes to.
-.
 This requires knowing the size of each hash in bytes.
-.
 They are stored in the [[digest_size]] array.
 <<Local declarations for the runner>>=
 unsigned char *output_buffer =
@@ -310,27 +214,19 @@ unsigned char *output_buffer =
 delete[] output_buffer;
 <<Global variables>>=
 static const unsigned digest_size[] = {28u, 32u, 32u};
-@ .
-.NH 2
-Running in Serial
-.
-.PP
+@ \subsection{Running in Serial}
 Running in serial is simple.
 <<Run benchmark in serial>>=
 for (uint64_t i = 0; i < hashes_per_block * num_blocks; i++)
 	run_hash(algorithm, i, output_buffer, i % hashes_per_block);
-@ .
-.NH 2
-Running with SYCL
-.
-.PP
+@ \subsection{Running with SYCL}
 Running with SYCL requires a few local variables and polymorphic types.
 A separate function is used to deal with this.
 <<Function definitions>>=
 template <class Selector>
 static void `run_sycl(Selector sel, unsigned char *host_buffer)
 {
-	<<SYCL \f(CWusing\fP statements>>
+	<<SYCL {\tt using} statements>>
 	queue q(sel);
 	<<Run benchmark with SYCL>>
 }
@@ -338,22 +234,16 @@ static void `run_sycl(Selector sel, unsigned char *host_buffer)
 run_sycl(sycl::cpu_selector_v, output_buffer);
 <<Run benchmark with SYCL on the GPU>>=
 run_sycl(sycl::gpu_selector_v, output_buffer);
-@ .
-.PP
-All of SYCL’s identifiers are from the [[sycl]] namespace, but they
+@ All of SYCL’s identifiers are from the [[sycl]] namespace, but they
 do not collide with anything already in scope.
-<<SYCL \f(CWusing\fP statements>>=
+<<SYCL {\tt using} statements>>=
 using sycl::event;
 using sycl::id;
 using sycl::malloc_device;
 using sycl::queue;
 using sycl::range;
-@ .
-.PP
-Each block of hashes will be offloaded separately, in serial.
-.
+@ Each block of hashes will be offloaded separately, in serial.
 SYCL needs its own buffer allocated on the device, [[sycl_buffer]].
-.
 TODO: does [[sycl_buffer]] need to be freed somehow?
 <<Run benchmark with SYCL>>=
 unsigned buffer_size = hashes_per_block * digest_size[algorithm];
@@ -362,9 +252,7 @@ unsigned char *sycl_buffer = malloc_device<unsigned char>(buffer_size, q);
 for (uint64_t i = 0, base = 0; i < num_blocks; i++, base += hashes_per_block) {
 	<<Offload hashing and copy back>>
 }
-@ .
-.PP
-The call to [[sycl_buffer]] can fail, and it’s painful to debug without
+@ The call to [[sycl_buffer]] can fail, and it’s painful to debug without
 a warning.
 <<Ensure [[sycl_buffer]] allocation was successful>>=
 if (sycl_buffer == nullptr) {
@@ -372,13 +260,9 @@ if (sycl_buffer == nullptr) {
 			"requested.\n", buffer_size);
 	exit(1);
 }
-@ .
-.PP
-Hashes are offloaded with a parallel for loop, and copied back via
+@ Hashes are offloaded with a parallel for loop, and copied back via
 [[queue::memcpy]].
-.
 The last event, the copy, must be explicitly waited for.
-.
 The algorithm must be a local variable, otherwise the SYCL compiler
 will complain.
 <<Offload hashing and copy back>>=
@@ -388,30 +272,14 @@ event hashes_ev = q.parallel_for(range<1>(hashes_per_block), [=] (id<1> idx) {
 });
 event copy_ev = q.memcpy(host_buffer, sycl_buffer, buffer_size, hashes_ev);
 copy_ev.wait();
-@ .
-.NH 2
-SHA-224 Hash Algorithm
-.
-.PP
+@ \subsection{SHA-224 Hash Algorithm}
 The SHA-224 algorithm used here comes from an implementation that I found
-online.\**
-.
-.\"The only meaningful change that I made was adding SYCL_EXTERNAL
-.\"to functions and including the SYCL header.
-.
-.FS
-\%http://www.zedwood.com/article/cpp-sha224-function\:
-.FE
-.
-.PP
+online.\footnote{\tt http://www.zedwood.com/article/cpp-sha224-function}
 There are some optimizations that could be made with a custom
 implementation, because we know exactly how long the message is, etc.
 <<Additional headers>>=
 #include "sha224.hpp"
-@ .
-.PP
-Using this implementation requires only the following function calls.
-.
+@ Using this implementation requires only the following function calls.
 The hash algorithms are implemented in [[switch]] case bodies, so a new
 scope is needed to declare local variables well.
 <<Hash [[input]] to [[buf[slot]]] with SHA-224>>=
@@ -421,23 +289,14 @@ scope is needed to declare local variables well.
 	ctx.update((const unsigned char *)&input, sizeof(input));
 	ctx.final(buf + slot * digest_size[algorithm]);
 }
-@ .
-.PP
-As it turns out [[SYCL_EXTERNAL]] is not universal, and everything
-.I must
+@ As it turns out [[SYCL_EXTERNAL]] is not universal, and everything {\tt must}
 be in the same translation to be portable across SYCL compilers, it seems.
-.
 Although the below strategy works, it’s bad practice and should be
 replaced.
 <<Additional headers>>=
 #include "sha224.cpp"
-@ .
-.NH 2
-SHA-256 Hash Algorithm
-.
-.PP
+@ \subsection{SHA-256 Hash Algorithm}
 I modified the SHA-224 implementation to be SHA-256.
-.
 I have not completely verified that it is correct.
 <<Additional headers>>=
 #include "sha256.hpp"
@@ -448,24 +307,15 @@ I have not completely verified that it is correct.
 	ctx.update((const unsigned char *)&input, sizeof(input));
 	ctx.final(buf + slot * digest_size[algorithm]);
 }
-@ .
-.PP
-See the SHA-224 section for an explanation.
+@ See the SHA-224 section for an explanation.
 <<Additional headers>>=
 #include "sha256.cpp"
-@ .
-.NH 2
-BLAKE3 Hash Algorithm
-.
-.PP
+@ \subsection{BLAKE3 Hash Algorithm}
 The BLAKE3 implementation comes from the BLAKE3 reference implemenation.
-.
 It had to be modified slightly to work with C++ and SYCL.
 <<Additional headers>>=
 #include "blake3.h"
-@ .
-.PP
-The interface for BLAKE3 uses different names and arguments than SHA-2,
+@ The interface for BLAKE3 uses different names and arguments than SHA-2,
 but functionally the same otherwise.
 <<Hash [[input]] to [[buf[slot]]] with BLAKE3>>=
 {
@@ -476,36 +326,21 @@ but functionally the same otherwise.
 			buf + slot * digest_size[algorithm],
 			digest_size[algorithm]);
 }
-@ .
-.PP
-See the SHA-224 section for an explanation.
+@ See the SHA-224 section for an explanation.
 <<Additional headers>>=
 #include "blake3.cpp"
 #include "blake3_dispatch.cpp"
 #include "blake3_portable.cpp"
-@ .
-.NH 1
-Benchmarking Scripts
-.
-.PP
-The \%run-bench.sh\: script automates the collection of data using
-the benchmark, and outputs the results to the file \%bench-results\:.
-.
+@ \subsection{Support Scripts}
+The \mbox{run-bench.sh} script automates the collection of data using
+the benchmark, and outputs the results to the file \mbox{bench-results}.
 It generates 16GiB of hashes using varying block sizes, with SHA-256
 and BLAKE3 hashes, and on the CPU and GPU.
-.
 TODO check your math on the sizes...
-.
-.PP
+
 It fails for the huge buffer sizes.
-.
 This should be investigated, but it does not appear to affect the
 completion of the script or the results.
-.
-.EQ
-delim off
-.EN
-.PP
 <<run-bench.sh>>=
 #!/bin/sh
 
@@ -536,11 +371,8 @@ done <<EOF | tee bench-results
 134217728	2
 268435456	1
 EOF
-@ .
-.PP
-The following Haskell program was used to generate the inputs for the
+@ The following Haskell program was used to generate the inputs for the
 above script, which were manually copied in.
-.
 This could be written as a shell script and included in \%run-bench.sh\:,
 so no manual copying is needed.
 <<Generate inputs>>=
@@ -550,14 +382,9 @@ maxBlockSize = maximum blockSizes
 blockCounts = map (div maxBlockSize) blockSizes
 outputs = zipWith (\s c -> shows s ('\t' : show c)) blockSizes blockCounts
 main = mapM_ putStrLn outputs
-@ .
-.PP
-The following script can be used to convert the output of the benchmark
-script to a grap(1) graph, suitable to
-.CW copy
-in \%bench.nw\:.
-.
-See the results section of that file to see how to use the output of
+@ The following script can be used to convert the output of the benchmark
+script to a grap(1) graph, suitable to {\tt copy} in \mbox{bench.nw}.
+See the report source of that file to see how to use the output of
 this script.
 <<to-grap.sh>>=
 #!/bin/sh
@@ -578,3 +405,8 @@ awk '-F\t' '
 	/gpu/ && /blake/ {char = "mu"}
 	{printf "\"\\(%s\" at (%f,%f)\n", char, $2, $10}
 '
+@ \section{Index}
+\subsection{Chunks}
+\nowebchunks
+\subsection{Identifiers}
+\nowebindex

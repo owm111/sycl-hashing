@@ -6,8 +6,8 @@ illiterate_sources = \
 scripts = run-bench.sh to-grap.sh
 programs = bench
 pictures = bench-results-pc.d
-documents = doc.ps doc.pdf report.ps report.pdf
-junk = doc.ms *.nwt
+documents = source.pdf source.html report.ps report.pdf
+junk = source.tex *.aux *.log
 
 CXX = syclcc
 SYCLFLAGS = --hipsycl-targets=omp
@@ -30,12 +30,15 @@ clean:
 deepclean: clean
 	$(RM) $(sources) $(scripts) $(documents)
 
-doc.ms: $(literate)
-	noweave -filter btdefn -delay -troff $^ >$@
+source.tex: $(literate)
+	noweave -filter btdefn -index -latex $^ >$@
 
-doc.ps: doc.ms
-	noroff -G -Kutf8 -Tps -e -ms -p $< >/dev/null
-	noroff -G -Kutf8 -Tps -e -ms -p $< >$@
+source.html: $(literate)
+	noweave -filter btdefn -filter l2h -index -html $^ >$@
+
+%.pdf: %.tex
+	pdflatex $<
+	pdflatex $<
 
 report.ps: report.ms $(pictures)
 	groff -G -Kutf8 -Tps -e -ms -p $< >$@

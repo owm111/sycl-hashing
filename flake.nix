@@ -29,6 +29,10 @@
     };
 
     packages = self.lib.pkgsForEachDefaults {
+      texlive = pkgs: sys: pkgs.texlive.combine {
+        inherit (pkgs.texlive) scheme-medium;
+        inherit (self.packages.${sys}) noweb;
+      };
       noweb = pkgs: sys: pkgs.noweb.overrideAttrs (old: {
         version = "2.13";
         src = pkgs.fetchFromGitHub {
@@ -49,6 +53,7 @@
           pkgs.opensyclWithRocm
           pkgs.plan9port # for grap
           self.packages.${sys}.noweb
+          self.packages.${sys}.texlive
         ];
       };
     };
