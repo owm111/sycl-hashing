@@ -1,0 +1,133 @@
+This repository includes a program to benchmark for hash generation and
+a report of the results of a handful of machines and configurations.
+
+The benchmark program, built to ./bench, measures the performance of
+several hashing algorithms (SHA-224, SHA-256, and BLAKE3) to fill a
+buffer with hashes of 64-bit integers, running on the CPU and GPU. It
+also compares the efficiency of different buffer sizes to generate a
+target total number of hashes.
+
+The report, built to report.ps and report.pdf, contains the results of
+running ./bench on a few different machines with different CPUs and GPUs.
+
+Source Files & Structure
+------------------------
+
+The following list describes the list of files that are included in
+the repository, and descriptions of their purpose.
+
+Makefile
+	Describes the build process for Make.
+
+flake.nix, flake.lock
+	A Nix flake that includes dependencies and a reproducible shell
+	environment.
+
+*.nw	Literate source code for the program, script, and documentation.
+
+sha2*, blake3*
+	Source code and headers for the SHA-2 and BLAKE3 hash functions.
+	These were taken from implmentations found online, and modified
+	to work with SYCL.
+
+*.d	Graphs for the report in grap(1) format.
+
+As mentioned, this project uses [Nix][1] for dependency management
+and development environments.  Nix was chosen because it is able to pin
+package versions and build the same environment across operating systems.
+No changes should be required to build and run the program when using
+the Nix shell.
+
+[1]: https://nixos.org
+
+Also mentioned above, this project is written in a literate style,
+specifically using [Noweb.][2] Literate programming allows source code
+to be included in the documentation and freely arranged in whatever
+order makes it easiest to understand.  Here, C++ source code, Bourne
+shell scripts, and troff documentation are all written in bench.nw.
+The notangle command extracts the C++ code and shell script, and the
+noweave command formats the C++ and script code with troff macros so
+it can be built like any other troff document; see the makefile for
+more details.
+
+[2]: https://www.cs.tufts.edu/\~nr/noweb
+
+Dependencies
+------------
+
+With Nix, use the development shell.
+
+	nix develop
+
+Otherwise, the following programs are needed to compile bench:
+
+- Noweb
+- A SYCL-aware C++ compiler: Intel DPC++, AdaptiveCpp, etc.
+
+The following programs are needed to the compile the report:
+
+- GNU roff
+- A version of grap(1), such as the one from plan9port
+- Ghostscript
+
+Compiling and Configuration
+---------------------------
+
+Everything in this project is built with Make. The makefile is designed
+to work out-of-the-box with the included Nix development shell. So,
+the following should build a working program and the report:
+
+	nix develop
+	make
+
+Compilation options can be customized with a file called config.mk.
+It is loaded by the makefile after the compilation variables are set, so
+config.mk can modify them. Below is an example config.mk that configures
+AdapativeCpp (f/k/a hipSYCL) to compile an optimized binary that works
+on the CPU (its backend is OpenMP) and for an AMD Radeon RX 7000-series
+graphics card (its backend is HIP).
+
+Information about what devices are available and their architectures
+can be found in the output of the hipsycl-info command.
+
+The -fno-stack-protector flag is necessary to compile for the GPU.
+
+	CXXFLAGS += -march=native -O3 -fno-stack-protector
+	SYCLFLAGS += '--hipsycl-targets=omp;hip:gfx1100' \
+			--hipsycl-use-accelerated-cpu
+
+TODO: include an example for Intel DPC++.
+
+If the preprocessor macro DUMP is defined, then the program will dump
+the hashes that it generates to disk in a file called bench-hashes.dat.
+Add the following line to config.mk to enable this.
+
+	CPPFLAGS += -DDUMP
+
+Bench Usage
+-----------
+
+The benchmark program requires four arguments:
+
+1. The number of hashes in each block. 
+2. The number of blocks.
+3. The hash algorithm to use.
+4. The method to generate the hashes.
+
+The program does not read the standard input or any files.
+
+The following hash algorithms are recognized:
+
+- `sha256`
+- `sha224`
+- `blake3` (256-bit hashes)
+
+The following generation methods are recognized:
+
+- `serial`
+- `sycl-cpu`
+- `sycl-gpu`
+
+The program writes its input parameters and elapsed time to run the
+benchmark to the standard output. Fields are separated by tabs, and the
+"meaningful" fields are the second, fourth, sixth, eighth, and tenth.
