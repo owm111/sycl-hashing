@@ -6,7 +6,7 @@ illiterate_sources = \
 scripts = run-bench.sh to-grap.sh
 programs = bench
 pictures = bench-results-pc.d
-documents = doc.ps doc.pdf
+documents = doc.ps doc.pdf report.ps report.pdf
 junk = doc.ms *.nwt
 
 CXX = syclcc
@@ -33,11 +33,14 @@ deepclean: clean
 doc.ms: $(literate)
 	noweave -filter btdefn -delay -troff $^ >$@
 
-doc.ps: doc.ms $(pictures)
+doc.ps: doc.ms
 	noroff -G -Kutf8 -Tps -e -ms -p $< >/dev/null
 	noroff -G -Kutf8 -Tps -e -ms -p $< >$@
 
-doc.pdf: doc.ps
+report.ps: report.ms $(pictures)
+	groff -G -Kutf8 -Tps -e -ms -p $< >$@
+
+%.pdf: %.ps
 	ps2pdf $< $@
 
 bench: $(sources) # $(illiterate_sources)

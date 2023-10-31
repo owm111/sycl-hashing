@@ -578,24 +578,3 @@ awk '-F\t' '
 	/gpu/ && /blake/ {char = "mu"}
 	{printf "\"\\(%s\" at (%f,%f)\n", char, $2, $10}
 '
-@ .
-.NH 1
-Results
-.
-.PP
-Below is a graph of the results from running the benchmark on my personal
-computer (AMD R7 3700X, 32GB DDR4-3200 RAM, Radeon RX 7900 XTX), compiled
-using AdapativeCpp with
-.CW -O3
-and
-.CW -march=native .
-.
-.EQ
-delim on
-.EN
-.G1
-# groff doesn't include grap, but p9p does
-frame ht 3 wid 4
-label top "Time to Generate 16GiB of Hashes" "on a Personal Computer"
-copy "bench-results-pc.d"
-.G2
