@@ -3,7 +3,7 @@ sources = bench.cpp
 illiterate_sources = \
 	sha224.cpp sha256.cpp \
 	blake3.cpp blake3_dispatch.cpp blake3_portable.cpp
-scripts = run-bench.sh to-grap.sh
+scripts = run-bench.sh to-grap.sh check-dumps.sh
 programs = bench
 pictures = bench-results-pc.d
 documents = source.pdf source.html report.ps report.pdf

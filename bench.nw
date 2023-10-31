@@ -19,8 +19,10 @@ The structure of the source file is listed below.
 int `main(int `argc, const char **`argv)
 {
 	<<Process arguments>>
+	<<Possibly initialize dump>>
 	<<Time the benchmark>>
 	<<Print the output>>
+	<<Possibly finalize dump>>
 	return 0;
 }
 @ The program supports the following hash algorithms and methods to
@@ -153,6 +155,46 @@ their enumerator’s number.
 <<Print the output>>=
 printf(OUTPUT_TEMPLATE, hashes_per_block, num_blocks,
 		algorithms[algorithm], methods[method], elapsed);
+@ \subsection{Dumping Hashes}
+If the [[DUMP]] preprocessor macro is defined, the program should dump
+its hashes to a file. This is for validating that the generated hashes
+are correct.
+
+See the check-dumps.sh script to compare the hashes side-by-side.
+<<Global variables>>=
+#ifdef DUMP
+static FILE *dump_stream;
+#endif
+<<Possibly initialize dump>>=
+#ifdef DUMP
+dump_stream = fopen("bench-hashes.dat", "w");
+#endif
+<<Possibly finalize dump>>=
+#ifdef DUMP
+fclose(dump_stream);
+#endif
+@ All of the generators will call [[dump]]. When dumping is enabled, it
+will be an actual function. Otherwise, it will be a macro that expands
+to nothing.
+<<Function definitions>>=
+#ifdef DUMP
+static void `dump(unsigned char *buffer, size_t num_hashes, size_t hash_size)
+{
+	<<Dump hashes in [[buffer]]>>
+}
+#else
+#define dump(x, y, z) /* dump */
+#endif
+@ Each hash is printed in hexadecimal, on its own line.
+TODO: it might be useful to print the index along with the hash.
+<<Dump hashes in [[buffer]]>>=
+unsigned i, j;
+for (i = 0; i < num_hashes; i++) {
+	for (j = 0; j < hash_size; j++) {
+		fprintf(dump_stream, "%02x", buffer[i * hash_size + j]);
+	}
+	fprintf(dump_stream, "\n");
+}
 @ \subsection{Supporting Different Hash Algorithms}
 The goal is to support several different hash algorithms and compare
 their performance.
@@ -217,8 +259,12 @@ static const unsigned digest_size[] = {28u, 32u, 32u};
 @ \subsection{Running in Serial}
 Running in serial is simple.
 <<Run benchmark in serial>>=
-for (uint64_t i = 0; i < hashes_per_block * num_blocks; i++)
-	run_hash(algorithm, i, output_buffer, i % hashes_per_block);
+for (uint64_t i = 0; i < num_blocks; i++) {
+	for (uint64_t j = 0; j < hashes_per_block; j++) {
+		run_hash(algorithm, i * hashes_per_block + j, output_buffer, j);
+	}
+	dump(output_buffer, hashes_per_block, digest_size[algorithm]);
+}
 @ \subsection{Running with SYCL}
 Running with SYCL requires a few local variables and polymorphic types.
 A separate function is used to deal with this.
@@ -272,6 +318,7 @@ event hashes_ev = q.parallel_for(range<1>(hashes_per_block), [=] (id<1> idx) {
 });
 event copy_ev = q.memcpy(host_buffer, sycl_buffer, buffer_size, hashes_ev);
 copy_ev.wait();
+dump(host_buffer, hashes_per_block, digest_size[algorithm]);
 @ \subsection{SHA-224 Hash Algorithm}
 The SHA-224 algorithm used here comes from an implementation that I found
 online.\footnote{\tt http://www.zedwood.com/article/cpp-sha224-function}
@@ -405,6 +452,19 @@ awk '-F\t' '
 	/gpu/ && /blake/ {char = "mu"}
 	{printf "\"\\(%s\" at (%f,%f)\n", char, $2, $10}
 '
+@ \subsection{Verifying Hashes}
+This script generates dumps of hashes generated on the CPU and GPU,
+then displays them side-by-side with less(1).
+<<check-dumps.sh>>=
+#!/bin/sh
+./bench 1024 1024 blake3 serial
+mv bench-hashes.dat bench-hashes-serial.txt
+./bench 1024 1024 blake3 sycl-cpu
+mv bench-hashes.dat bench-hashes-cpu.txt
+./bench 1024 1024 blake3 sycl-gpu
+mv bench-hashes.dat bench-hashes-gpu.txt
+paste bench-hashes-serial.txt bench-hashes-cpu.txt bench-hashes-gpu.txt | less
+wc -l bench-hashes-serial.txt bench-hashes-cpu.txt bench-hashes-gpu.txt
 @ \section{Index}
 \subsection{Chunks}
 \nowebchunks
