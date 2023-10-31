@@ -446,9 +446,25 @@ for (uint64_t i = 0; i < hashes_per_block * num_blocks; i++)
 Running with SYCL
 .
 .PP
+Running with SYCL requires a few local variables and polymorphic types.
+A separate function is used to deal with this.
+<<Function definitions>>=
+template <class Selector>
+static void `run_sycl(Selector sel, unsigned char *host_buffer)
+{
+	<<SYCL \f(CWusing\fP statements>>
+	queue q(sel);
+	<<Run benchmark with SYCL>>
+}
+<<Run benchmark with SYCL on the CPU>>=
+run_sycl(sycl::cpu_selector_v, output_buffer);
+<<Run benchmark with SYCL on the GPU>>=
+run_sycl(sycl::gpu_selector_v, output_buffer);
+@ .
+.PP
 All of SYCL’s identifiers are from the [[sycl]] namespace, but they
 do not collide with anything already in scope.
-<<Local declarations for the runner>>=
+<<SYCL \f(CWusing\fP statements>>=
 using sycl::event;
 using sycl::id;
 using sycl::malloc_device;
@@ -456,45 +472,17 @@ using sycl::queue;
 using sycl::range;
 @ .
 .PP
-The code for running the benchmark using SYCL on the CPU and GPU is the
-same, except for the selector that gets passed to the constructor for
-[[sycl::queue]].
-.
-The selector does not have a simple type as far as I know.
-.
-Therefore, it seems like smallest solution to this problem is to declare
-the queue as a pointer, and initialize it when needed.
-.
-It would be good practice to delete it at some point, but it is fine to
-live throughout the program’s lifetime.
-<<Local declarations for the runner>>=
-queue *`q = nullptr;
-<<Run benchmark with SYCL on the CPU>>=
-`q = new queue(sycl::cpu_selector_v);
-<<Run benchmark with SYCL>>
-<<Run benchmark with SYCL on the GPU>>=
-`q = new queue(sycl::gpu_selector_v);
-<<Run benchmark with SYCL>>
-<<Delete any local declarations>>=
-delete q;
-@ .
-.PP
 Each block of hashes will be offloaded separately, in serial.
 .
 SYCL needs its own buffer allocated on the device, [[sycl_buffer]].
 .
 TODO: does [[sycl_buffer]] need to be freed somehow?
-.
-Several local variables are needed, including [[sycl_buffer]] and this a
-[[switch]] case, so it is best to create a new scope.
 <<Run benchmark with SYCL>>=
-{
 unsigned buffer_size = hashes_per_block * digest_size[algorithm];
-unsigned char *sycl_buffer = malloc_device<unsigned char>(buffer_size, *q);
+unsigned char *sycl_buffer = malloc_device<unsigned char>(buffer_size, q);
 <<Ensure [[sycl_buffer]] allocation was successful>>
 for (uint64_t i = 0, base = 0; i < num_blocks; i++, base += hashes_per_block) {
 	<<Offload hashing and copy back>>
-}
 }
 @ .
 .PP
@@ -517,10 +505,10 @@ The algorithm must be a local variable, otherwise the SYCL compiler
 will complain.
 <<Offload hashing and copy back>>=
 enum algorithm alg = algorithm;
-event hashes_ev = q->parallel_for(range<1>(hashes_per_block), [=] (id<1> idx) {
+event hashes_ev = q.parallel_for(range<1>(hashes_per_block), [=] (id<1> idx) {
 	run_hash(alg, base + idx, sycl_buffer, idx);
 });
-event copy_ev = q->memcpy(output_buffer, sycl_buffer, buffer_size, hashes_ev);
+event copy_ev = q.memcpy(host_buffer, sycl_buffer, buffer_size, hashes_ev);
 copy_ev.wait();
 @ .
 .NH 2
