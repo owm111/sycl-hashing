@@ -381,9 +381,9 @@ but functionally the same otherwise.
 @ \subsection{Support Scripts}
 The \mbox{run-bench.sh} script automates the collection of data using
 the benchmark, and outputs the results to the file \mbox{bench-results}.
-It generates 16GiB of hashes using varying block sizes, with SHA-256
-and BLAKE3 hashes, and on the CPU and GPU.
-TODO check your math on the sizes...
+It generates SHA-256 and BLAKE3 hashes on the CPU and GPU with block
+sizes and hash counts read from the standard input.
+The generate-inputs.sh script, described later, generates suitable inputs.
 
 It fails for the huge buffer sizes.
 This should be investigated, but it does not appear to affect the
@@ -397,61 +397,113 @@ do
 	./bench $x $y sha256 sycl-gpu
 	./bench $x $y blake3 sycl-cpu
 	./bench $x $y blake3 sycl-gpu
-done <<EOF | tee bench-results
-1024	262144
-2048	131072
-4096	65536
-8192	32768
-16384	16384
-32768	8192
-65536	4096
-131072	2048
-262144	1024
-524288	512
-1048576	256
-2097152	128
-4194304	64
-8388608	32
-16777216	16
-33554432	8
-67108864	4
-134217728	2
-268435456	1
-EOF
-@ The following Haskell program was used to generate the inputs for the
-above script, which were manually copied in.
-This could be written as a shell script and included in \%run-bench.sh\:,
-so no manual copying is needed.
-<<Generate inputs>>=
-digestSize = div 512 8
-blockSizes = [y | x <- [0 .. 34], let y = div (2 ^ x) digestSize, y >= 1024]
-maxBlockSize = maximum blockSizes
-blockCounts = map (div maxBlockSize) blockSizes
-outputs = zipWith (\s c -> shows s ('\t' : show c)) blockSizes blockCounts
-main = mapM_ putStrLn outputs
-@ The following script can be used to convert the output of the benchmark
-script to a grap(1) graph, suitable to {\tt copy} in \mbox{bench.nw}.
+done | tee bench-results
+@ \subsection{Making Graphs}
+The following script can be used to convert the output of the benchmark
+script to a grap(1) graph, suitable to {\tt copy} in \mbox{report.ms}.
 See the report source of that file to see how to use the output of
 this script.
+
+This script needs some work, especially with selecting ticks.
+
+Assumes 256-bit hashes.
 <<to-grap.sh>>=
 #!/bin/sh
 echo 'label left "Real Time" "(s)"'
 echo 'label bot "Block Size"'
-echo 'coord y 0, 22 log x'
-echo -n 'ticks bot out at 1024 "64KiB", 4096 "256KiB", 16384 "1MiB", '
-echo -n '65536 "4MiB", 262144 "16MiB", 1048576 "64MiB", 4194304 "256MiB", '
-echo '16777216 "1GiB", 67108864 "4GiB"'
-echo '"\(sq SHA-256, CPU" ljust at (1e6,20)'
-echo '"\(pl SHA-256, GPU" ljust at (1e6,19)'
-echo '"\(*D BLAKE3, CPU" ljust at (1e6,18)'
-echo '"\(mu BLAKE3, GPU" ljust at (1e6,17)'
 awk '-F\t' '
-	/cpu/ && /sha/ {char = "sq"}
-	/gpu/ && /sha/ {char = "pl"}
-	/cpu/ && /blake/ {char = "*D"}
-	/gpu/ && /blake/ {char = "mu"}
-	{printf "\"\\(%s\" at (%f,%f)\n", char, $2, $10}
+	function tosize(n, i, suffix, suffixes) {
+		<<Convert bytes to human-readable units>>
+	}
+	BEGIN {
+		xmin = 1e12
+	}
+	/cpu/ && /sha/ {char[count] = "sq"}
+	/gpu/ && /sha/ {char[count] = "pl"}
+	/cpu/ && /blake/ {char[count] = "*D"}
+	/gpu/ && /blake/ {char[count] = "mu"}
+	{
+		x[count] = $2
+		y[count] = $10
+		ymax = $10 > ymax ? $10 : ymax
+		xmax = $2 > xmax ? $2 : xmax
+		xmin = $2 < xmin ? $2 : xmin
+		xtick[$2]++
+		count++
+	}
+	END {
+		printf "coord y 0, %d log x\n", ymax + 1
+		<<Select and print ticks>>
+		printf "\"\\(sq SHA-256, CPU\" \"\\(pl SHA-256, GPU\" " \
+			"\"\\(*D BLAKE3, CPU\" \"\\(mu BLAKE3, GPU\" " \
+			"\"\" ljust at (%f,%f)\n", xmax / 8, ymax * 0.8
+		for (i = 0; i < count; i++) {
+			if (!(i in char)) continue
+			printf "\"\\(%s\" at (%f,%f)\n", char[i], x[i], y[i]
+		}
+	}
 '
+@ TODO is there an easier way to do this with gawk?
+<<Convert bytes to human-readable units>>=
+suffixes[0] = "B"
+suffixes[1] = "KiB"
+suffixes[2] = "MiB"
+suffixes[3] = "GiB"
+i = 0
+suffix = 0
+while (n > 1024) {
+	n = n / 1024
+	suffix++
+}
+return sprintf("%d%s", n, suffixes[suffix])
+@ TODO improve this. This seems bad.
+<<Select and print ticks>>=
+printf "ticks bot out at"
+len = asorti(xtick)
+comma = 0
+for (i = 0; i < len; i += 2) {
+	if (xtick[i] == 0) {
+		i--
+		continue
+	}
+	printf "%s%d \"%s\"", comma ? ", " : " ", xtick[i], tosize(xtick[i] * 32)
+	comma = 1
+}
+printf "\n"
+@ \subsection{Generating Inputs}
+The following script generates inputs for run-bench.sh. It takes two
+arguments: the amount of bytes to generate and the maximum block size. It
+assumes 256-bit hashes.
+
+Arguments are taken as powers of two. For example, to generate 16GiB of
+hashes with a maximum block size of 4GiB, use the command line below. Note
+that $2^{34} = 16 \mathrm{GiB}$ and $2^{31} = 2 \mathrm{GiB}$.
+\begin{verbatim}
+./generate-inputs.sh 34 31
+\end{verbatim}
+<<generate-inputs.sh>>=
+#!/bin/sh
+
+if [ $# -lt 2 ]
+then
+	printf 'usage: ./generate-inputs.sh TOTAL_SIZE MAX_BLOCK_SIZE\n' >&2
+	printf '\tArguments are powers of 2, e.g., 32 gives 2^32 = 16GiB\n' >&2
+	printf '\t2^0=1 2^1=2 2^2=4 2^3=8 2^4=16 2^5=32 2^6=64 2^7=128 ' >&2
+	printf '2^8=256 2^9=512\n' >&2
+	exit 1
+fi
+
+total_bytes=$1
+max_block_bytes=$2
+digest_size_bytes=5 # 256 bits = 32 bytes, 32=2^5
+
+total=$((total_bytes - digest_size_bytes))
+max_block=$((max_block_bytes - digest_size_bytes))
+
+for b in $(seq 10 $max_block)
+do
+	printf '%d\t%d\n' $((1 << b)) $((1 << (total - b)))
+done
 @ \subsection{Verifying Hashes}
 This script generates dumps of hashes generated on the CPU and GPU,
 then displays them side-by-side with less(1).
