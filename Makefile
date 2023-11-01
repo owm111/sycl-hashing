@@ -5,7 +5,7 @@ illiterate_sources = \
 	blake3.cpp blake3_dispatch.cpp blake3_portable.cpp
 scripts = run-bench.sh to-grap.sh check-dumps.sh generate-inputs.sh
 programs = bench
-pictures = bench-results-pc.d
+pictures = bench-results-pc.d bench-results-eightsocket.d
 documents = source.pdf source.html report.ps report.pdf
 junk = source.tex *.aux *.log
 

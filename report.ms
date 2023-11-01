@@ -20,4 +20,15 @@ frame ht 3 wid 4
 label top "Time to Generate 16GiB of Hashes" "on a Personal Computer"
 copy "bench-results-pc.d"
 .G2
-
+.
+.SH
+Mystic Eightsocket System
+.LP
+DataSys Mystic Eightsocket system.
+Compiled using DP++ with \f(CW-O3\fP and \f(CW-march=native\fP.
+See notes in README.
+.G1
+frame ht 3 wid 4
+label top "Time to Generate 16GiB of Hashes" "on Eightsocket"
+copy "bench-results-eightsocket.d"
+.G2

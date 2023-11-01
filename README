@@ -10,6 +10,17 @@ target total number of hashes.
 The report, built to report.ps and report.pdf, contains the results of
 running ./bench on a few different machines with different CPUs and GPUs.
 
+Known Issues
+------------
+
+BLAKE3 does not work with Intel DPC++ (error below), but it does work
+with AdaptiveCpp (no error). I needed to deleted the BLAKE3 case to make
+it compile.
+
+	./blake3.cpp:341:20: error: SYCL kernel cannot call a recursive function
+	<...>
+	./blake3.cpp:264:1: note: function implemented using recursion declared here
+
 Source Files & Structure
 ------------------------
 
@@ -80,6 +91,10 @@ the following should build a working program and the report:
 	nix develop
 	make
 
+To compile just the benchmark and necessary scripts:
+
+	make bench run-bench.sh to-grap.sh generate-inputs.sh
+
 Compilation options can be customized with a file called config.mk.
 It is loaded by the makefile after the compilation variables are set, so
 config.mk can modify them. Below is an example config.mk that configures
@@ -96,7 +111,12 @@ The -fno-stack-protector flag is necessary to compile for the GPU.
 	SYCLFLAGS += '--hipsycl-targets=omp;hip:gfx1100' \
 			--hipsycl-use-accelerated-cpu
 
-TODO: include an example for Intel DPC++.
+For Intel oneAPI, use the following config.mk:
+
+	CXX = icpx
+	CXXFLAGS += -march=native -O3 -fno-stack-protector
+	CPPFLAGS += -I/opt/intel/oneapi/compiler/latest/linux/include/sycl
+	SYCLFLAGS = -fsycl
 
 If the preprocessor macro DUMP is defined, then the program will dump
 the hashes that it generates to disk in a file called bench-hashes.dat.
