@@ -25,10 +25,17 @@ copy "bench-results-pc.d"
 Mystic Eightsocket System
 .LP
 DataSys Mystic Eightsocket system.
-Compiled using DP++ with \f(CW-O3\fP and \f(CW-march=native\fP.
+Compiled using AdaptiveCpp with \f(CW-O3\fP and \f(CW-march=native\fP.
 See notes in README.
 .G1
 frame ht 3 wid 4
 label top "Time to Generate 16GiB of Hashes" "on Eightsocket"
 copy "bench-results-eightsocket.d"
+.G2
+.LP
+Below is another graph on the same system, but using g++ instead of Clang.
+.G1
+frame ht 3 wid 4
+label top "Time to Generate 16GiB of Hashes" "on Eightsocket"
+copy "bench-results-eightsocket-g++.d"
 .G2
