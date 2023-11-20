@@ -29,7 +29,7 @@ int `main(int `argc, const char **`argv)
 generate the hashes.
 <<Type definitions>>=
 enum algorithm {SHA224, SHA256, BLAKE3};
-enum method {SERIAL, SYCL_CPU, SYCL_GPU};
+enum method {SERIAL, OPENMP, SYCL_CPU, SYCL_GPU};
 @ The following [[printf]] template is used for printing output to the
 standard output.
 <<Macro definitions>>=
@@ -85,7 +85,7 @@ The order of strings within the array {\tt must} match the order of
 enumerators within the enumeration definition.
 <<Global variables>>=
 static const char *algorithms[] = {"sha224", "sha256", "blake3"};
-static const char *methods[] = {"serial", "sycl-cpu", "sycl-gpu"};
+static const char *methods[] = {"serial", "openmp", "sycl-cpu", "sycl-gpu"};
 @ It will be useful to have a macro to take the length of an array.
 <<Macro definitions>>=
 #define LENGTH(arr) (sizeof(arr) / sizeof((arr)[0]))
@@ -243,6 +243,9 @@ case SYCL_CPU:
 case SYCL_GPU:
 	<<Run benchmark with SYCL on the GPU>>
 	break;
+case OPENMP:
+	<<Run benchmark with OpenMP>>
+	break;
 }
 <<Delete any local declarations>>
 @ Something that all of the runners will need is a buffer to write the
@@ -260,6 +263,19 @@ static const unsigned digest_size[] = {28u, 32u, 32u};
 Running in serial is simple.
 <<Run benchmark in serial>>=
 for (uint64_t i = 0; i < num_blocks; i++) {
+	for (uint64_t j = 0; j < hashes_per_block; j++) {
+		run_hash(algorithm, i * hashes_per_block + j, output_buffer, j);
+	}
+	dump(output_buffer, hashes_per_block, digest_size[algorithm]);
+}
+@ \subsection{Running with OpenMP}
+The same as serial, but with an OpenMP pragma.
+
+There are probably other ways to parallelize this.
+<<Run benchmark with OpenMP>>=
+#pragma omp parallel
+for (uint64_t i = 0; i < num_blocks; i++) {
+#pragma omp for
 	for (uint64_t j = 0; j < hashes_per_block; j++) {
 		run_hash(algorithm, i * hashes_per_block + j, output_buffer, j);
 	}
@@ -420,8 +436,10 @@ completion of the script or the results.
 
 while read -r x y
 do
+	./bench $x $y sha256 openmp
 	./bench $x $y sha256 sycl-cpu
 	./bench $x $y sha256 sycl-gpu
+	./bench $x $y blake3 openmp
 	./bench $x $y blake3 sycl-cpu
 	./bench $x $y blake3 sycl-gpu
 done | tee bench-results
@@ -445,8 +463,10 @@ awk '-F\t' '
 	BEGIN {
 		xmin = 1e12
 	}
+	/openmp/ && /sha/ {char[count] = "ci"}
 	/cpu/ && /sha/ {char[count] = "sq"}
 	/gpu/ && /sha/ {char[count] = "pl"}
+	/openmp/ && /blake/ {char[count] = "bu"}
 	/cpu/ && /blake/ {char[count] = "*D"}
 	/gpu/ && /blake/ {char[count] = "mu"}
 	{
@@ -463,6 +483,7 @@ awk '-F\t' '
 		<<Select and print ticks>>
 		printf "\"\\(sq SHA-256, CPU\" \"\\(pl SHA-256, GPU\" " \
 			"\"\\(*D BLAKE3, CPU\" \"\\(mu BLAKE3, GPU\" " \
+			"\"\\(ci SHA256, OMP\" \"\\(bu BLAKE3, OMP\" " \
 			"\"\" ljust at (%f,%f)\n", xmax / 8, ymax * 0.8
 		for (i = 0; i < count; i++) {
 			if (!(i in char)) continue
