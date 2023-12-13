@@ -16,6 +16,10 @@ CXXFLAGS = -std=c++17 -g -Wall -Wextra -Wpedantic -fopenmp $(SYCLFLAGS)
 LDFLAGS = -fopenmp $(SYCLFLAGS)
 LDLIBS = -lstdc++
 
+# These are needed to make blake3 compile without needing 4+ additional files
+CPPFLAGS += \
+	-DBLAKE3_NO_SSE2 -DBLAKE3_NO_SSE41 -DBLAKE3_NO_AVX2 -DBLAKE3_NO_AVX512
+
 -include config.mk
 
 .PHONY: all clean deepclean
@@ -44,15 +48,7 @@ report.ps: report.ms $(pictures)
 %.pdf: %.ps
 	ps2pdf $< $@
 
-%: %.o
-	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
-
-bench: $(sources:cpp=o) blake3_avx512.o blake3_avx2.o blake3_sse41.o blake3_sse2.o
-
-blake3_avx512.o: CFLAGS += -mavx512vl -mavx512f
-blake3_avx2.o: CFLAGS += -mavx2
-blake3_sse41.o: CFLAGS += -msse4
-blake3_sse2.o: CFLAGS += -msse2
+bench: $(sources) # $(illiterate_sources)
 
 $(sources) $(scripts): $(literate)
 	for x in $(sources); do \
