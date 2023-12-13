@@ -6,17 +6,17 @@
 #include <cstdint>
 #include <sycl/sycl.hpp>
 #include <omp.h>
-#line 372 "bench.nw"
+#line 329 "bench.nw"
 #include "sha224.hpp"
-#line 388 "bench.nw"
+#line 345 "bench.nw"
 #include "sha224.cpp"
-#line 393 "bench.nw"
+#line 350 "bench.nw"
 #include "sha256.hpp"
-#line 403 "bench.nw"
+#line 360 "bench.nw"
 #include "sha256.cpp"
-#line 408 "bench.nw"
+#line 365 "bench.nw"
 #include "blake3.h"
-#line 422 "bench.nw"
+#line 379 "bench.nw"
 #include "blake3.cpp"
 #include "blake3_dispatch.cpp"
 #include "blake3_portable.cpp"
@@ -30,7 +30,7 @@
 #define LENGTH(arr) (sizeof(arr) / sizeof((arr)[0]))
 #line 32 "bench.nw"
 enum algorithm {SHA224, SHA256, BLAKE3};
-enum method {SERIAL, OPENMP, SYCL_CPU, SYCL_GPU};
+enum method {SERIAL, SYCL_CPU, SYCL_GPU};
 #line 80 "bench.nw"
 static unsigned parse_unsigned(const char **argv, int arg_num);
 static int parse_enumerator(const char **argv, int arg_num,
@@ -45,12 +45,12 @@ static enum algorithm algorithm;
 static enum method method;
 #line 88 "bench.nw"
 static const char *algorithms[] = {"sha224", "sha256", "blake3"};
-static const char *methods[] = {"serial", "openmp", "sycl-cpu", "sycl-gpu"};
+static const char *methods[] = {"serial", "sycl-cpu", "sycl-gpu"};
 #line 166 "bench.nw"
 #ifdef DUMP
 static FILE *dump_stream;
 #endif
-#line 262 "bench.nw"
+#line 259 "bench.nw"
 static const unsigned digest_size[] = {28u, 32u, 32u};
 #line 106 "bench.nw"
 static unsigned parse_unsigned(const char **argv, int arg_num)
@@ -106,7 +106,7 @@ static void run_hash(enum algorithm algorithm, uint64_t input,
 	switch (algorithm) {
 	case SHA224:
 		
-#line 377 "bench.nw"
+#line 334 "bench.nw"
 {
 	class SHA224 ctx;
 	ctx.init();
@@ -117,7 +117,7 @@ static void run_hash(enum algorithm algorithm, uint64_t input,
 		break;
 	case SHA256:
 		
-#line 395 "bench.nw"
+#line 352 "bench.nw"
 {
 	class SHA256 ctx;
 	ctx.init();
@@ -128,7 +128,7 @@ static void run_hash(enum algorithm algorithm, uint64_t input,
 		break;
 	case BLAKE3:
 		
-#line 412 "bench.nw"
+#line 369 "bench.nw"
 {
 	blake3_hasher hasher;
 	blake3_hasher_init(&hasher);
@@ -141,69 +141,43 @@ static void run_hash(enum algorithm algorithm, uint64_t input,
 		break;
 	}
 }
-#line 290 "bench.nw"
-template<class Selector>
-static std::vector<sycl::queue> make_queues(Selector sel, bool use_all)
-{
-	sycl::platform p(sel);
-	std::vector<sycl::device> ds = p.get_devices();
-	if (!use_all) {
-		for (unsigned i = 1; i < ds.size(); i++) {
-			ds.pop_back();
-		}
-	}
-	std::vector<sycl::queue> result;
-	for (sycl::device d : ds) {
-		sycl::queue q(d);
-		result.push_back(q);
-	}
-	return result;
-}
-#line 312 "bench.nw"
-static std::vector<unsigned char *> alloc_buffers(std::vector<sycl::queue> qs,
-		int buffer_size)
-{
-	std::vector<unsigned char *> result;
-	for (sycl::queue q : qs) {
-		unsigned char *b = sycl::malloc_device<unsigned char>(
-				buffer_size, q);
-		if (b == nullptr) {
-			fprintf(stderr, "sycl::malloc_device failed when "
-					"called %u bytes were requested.\n",
-					buffer_size);
-			exit(1);
-		}
-		result.push_back(b);
-	}
-	return result;
-}
-#line 334 "bench.nw"
+#line 273 "bench.nw"
 template <class Selector>
-static void run_sycl(Selector sel, unsigned char *host_buffer, bool use_all)
+static void run_sycl(Selector sel, unsigned char *host_buffer)
 {
-	std::vector<sycl::queue> qs = make_queues(sel, use_all);
-	int buffer_size = (hashes_per_block * digest_size[algorithm])
-			/ qs.size();
-	int hashes_per_device = hashes_per_block / qs.size();
-	std::vector<unsigned char *> buffers = alloc_buffers(qs, buffer_size);
-#pragma omp parallel if(qs.size() > 1) num_threads(qs.size())
-	{
-		int t = omp_get_thread_num();
-		enum algorithm alg = algorithm;
-		unsigned char *host_ptr = host_buffer + buffer_size * t;
-		for (uint64_t i = 0, base = 0; i < num_blocks;
-					i++, base += hashes_per_device) {
-			sycl::event hashes_ev = qs[t].parallel_for(sycl::range<1>(hashes_per_device), [=] (sycl::id<1> idx) {
-				run_hash(alg, base + idx, buffers[t], idx);
-			});
-			sycl::event copy_ev = qs[t].memcpy(host_ptr, buffers[t], buffer_size, hashes_ev);
-			copy_ev.wait();
-			dump(host_ptr, hashes_per_device, digest_size[algorithm]);
-		}
-	}
-	for (unsigned i = 0; i < buffers.size(); i++) {
-		sycl::free(buffers[i], qs[i]);
-	}
+	
+#line 287 "bench.nw"
+using sycl::event;
+using sycl::id;
+using sycl::malloc_device;
+using sycl::queue;
+using sycl::range;
+#line 277 "bench.nw"
+	queue q(sel);
+	
+#line 296 "bench.nw"
+unsigned buffer_size = hashes_per_block * digest_size[algorithm];
+unsigned char *sycl_buffer = malloc_device<unsigned char>(buffer_size, q);
+#line 305 "bench.nw"
+if (sycl_buffer == nullptr) {
+	fprintf(stderr, "sycl::malloc_device failed when called %u bytes were "
+			"requested.\n", buffer_size);
+	exit(1);
+}
+#line 299 "bench.nw"
+for (uint64_t i = 0, base = 0; i < num_blocks; i++, base += hashes_per_block) {
+	
+#line 316 "bench.nw"
+enum algorithm alg = algorithm;
+event hashes_ev = q.parallel_for(range<1>(hashes_per_block), [=] (id<1> idx) {
+	run_hash(alg, base + idx, sycl_buffer, idx);
+});
+event copy_ev = q.memcpy(host_buffer, sycl_buffer, buffer_size, hashes_ev);
+copy_ev.wait();
+dump(host_buffer, hashes_per_block, digest_size[algorithm]);
+#line 301 "bench.nw"
+}
+#line 279 "bench.nw"
 }
 #line 20 "bench.nw"
 int main(int argc, const char **argv)
@@ -232,14 +206,14 @@ dump_stream = fopen("bench-hashes.dat", "w");
 double elapsed;
 struct timespec start, end;
 clock_gettime(CLOCK_MONOTONIC, &start);
-#line 257 "bench.nw"
+#line 254 "bench.nw"
 unsigned char *output_buffer =
 		new unsigned char[hashes_per_block * digest_size[algorithm]];
 #line 237 "bench.nw"
 switch (method) {
 case SERIAL:
 	
-#line 266 "bench.nw"
+#line 263 "bench.nw"
 for (uint64_t i = 0; i < num_blocks; i++) {
 	for (uint64_t j = 0; j < hashes_per_block; j++) {
 		run_hash(algorithm, i * hashes_per_block + j, output_buffer, j);
@@ -250,31 +224,18 @@ for (uint64_t i = 0; i < num_blocks; i++) {
 	break;
 case SYCL_CPU:
 	
-#line 363 "bench.nw"
-run_sycl(sycl::cpu_selector_v, output_buffer, true);
+#line 281 "bench.nw"
+run_sycl(sycl::cpu_selector_v, output_buffer);
 #line 243 "bench.nw"
 	break;
 case SYCL_GPU:
 	
-#line 365 "bench.nw"
-run_sycl(sycl::gpu_selector_v, output_buffer, true);
+#line 283 "bench.nw"
+run_sycl(sycl::gpu_selector_v, output_buffer);
 #line 246 "bench.nw"
 	break;
-case OPENMP:
-	
-#line 277 "bench.nw"
-#pragma omp parallel
-for (uint64_t i = 0; i < num_blocks; i++) {
-#pragma omp for
-	for (uint64_t j = 0; j < hashes_per_block; j++) {
-		run_hash(algorithm, i * hashes_per_block + j, output_buffer, j);
-	}
-	dump(output_buffer, hashes_per_block, digest_size[algorithm]);
 }
-#line 249 "bench.nw"
-	break;
-}
-#line 260 "bench.nw"
+#line 257 "bench.nw"
 delete[] output_buffer;
 #line 149 "bench.nw"
 clock_gettime(CLOCK_MONOTONIC, &end);
