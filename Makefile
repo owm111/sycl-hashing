@@ -12,9 +12,7 @@ junk = source.tex *.aux *.log
 CXX = syclcc
 SYCLFLAGS = --hipsycl-targets=omp
 CPPFLAGS = -D_XOPEN_SOURCE=700
-CXXFLAGS = -std=c++17 -g -Wall -Wextra -Wpedantic -fopenmp $(SYCLFLAGS)
-LDFLAGS = -fopenmp $(SYCLFLAGS)
-LDLIBS = -lstdc++
+CXXFLAGS = -std=c++17 -g -Wall -Wextra -Wpedantic $(SYCLFLAGS)
 
 # These are needed to make blake3 compile without needing 4+ additional files
 CPPFLAGS += \

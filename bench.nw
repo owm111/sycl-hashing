@@ -267,86 +267,59 @@ for (uint64_t i = 0; i < num_blocks; i++) {
 	dump(output_buffer, hashes_per_block, digest_size[algorithm]);
 }
 @ \subsection{Running with SYCL}
-@ The following function looks for devices that match the selector,
-and returns queues for them. If [[use_all]] is false, then only on queue
-is returned.
-<<Function definitions>>=
-template<class Selector>
-static std::vector<sycl::queue> `make_queues(Selector sel, bool use_all)
-{
-	sycl::platform p(sel);
-	std::vector<sycl::device> ds = p.get_devices();
-	if (!use_all) {
-		for (unsigned i = 1; i < ds.size(); i++) {
-			ds.pop_back();
-		}
-	}
-	std::vector<sycl::queue> result;
-	for (sycl::device d : ds) {
-		sycl::queue q(d);
-		result.push_back(q);
-	}
-	return result;
-}
-@ The following function creates buffers for each device in the given
-vector. If allocation fails, the program exits with an error.
-
-TODO: better error message
-<<Function definitions>>=
-static std::vector<unsigned char *> `alloc_buffers(std::vector<sycl::queue> qs,
-		int buffer_size)
-{
-	std::vector<unsigned char *> result;
-	for (sycl::queue q : qs) {
-		unsigned char *b = sycl::malloc_device<unsigned char>(
-				buffer_size, q);
-		if (b == nullptr) {
-			fprintf(stderr, "sycl::malloc_device failed when "
-					"called %u bytes were requested.\n",
-					buffer_size);
-			exit(1);
-		}
-		result.push_back(b);
-	}
-	return result;
-}
-@ Running with SYCL requires a few local variables and polymorphic types.
+Running with SYCL requires a few local variables and polymorphic types.
 A separate function is used to deal with this.
-
-TODO: document [[use_all]].
 <<Function definitions>>=
 template <class Selector>
-static void `run_sycl(Selector sel, unsigned char *host_buffer, bool use_all)
+static void `run_sycl(Selector sel, unsigned char *host_buffer)
 {
-	std::vector<sycl::queue> qs = make_queues(sel, use_all);
-	int buffer_size = (hashes_per_block * digest_size[algorithm])
-			/ qs.size();
-	int hashes_per_device = hashes_per_block / qs.size();
-	std::vector<unsigned char *> buffers = alloc_buffers(qs, buffer_size);
-#pragma omp parallel if(qs.size() > 1) num_threads(qs.size())
-	{
-		int t = omp_get_thread_num();
-		enum algorithm alg = algorithm;
-		unsigned char *host_ptr = host_buffer + buffer_size * t;
-		for (uint64_t i = 0, base = 0; i < num_blocks;
-					i++, base += hashes_per_device) {
-			sycl::event hashes_ev = qs[t].parallel_for(sycl::range<1>(hashes_per_device), [=] (sycl::id<1> idx) {
-				run_hash(alg, base + idx, buffers[t], idx);
-			});
-			sycl::event copy_ev = qs[t].memcpy(host_ptr, buffers[t], buffer_size, hashes_ev);
-			copy_ev.wait();
-			dump(host_ptr, hashes_per_device, digest_size[algorithm]);
-		}
-	}
-	for (unsigned i = 0; i < buffers.size(); i++) {
-		sycl::free(buffers[i], qs[i]);
-	}
+	<<SYCL {\tt using} statements>>
+	queue q(sel);
+	<<Run benchmark with SYCL>>
 }
-@ TODO runners that set [[use_all]] to false.
 <<Run benchmark with SYCL on the CPU>>=
-run_sycl(sycl::cpu_selector_v, output_buffer, true);
+run_sycl(sycl::cpu_selector_v, output_buffer);
 <<Run benchmark with SYCL on the GPU>>=
-run_sycl(sycl::gpu_selector_v, output_buffer, true);
+run_sycl(sycl::gpu_selector_v, output_buffer);
+@ All of SYCL’s identifiers are from the [[sycl]] namespace, but they
+do not collide with anything already in scope.
+<<SYCL {\tt using} statements>>=
+using sycl::event;
+using sycl::id;
+using sycl::malloc_device;
+using sycl::queue;
+using sycl::range;
+@ Each block of hashes will be offloaded separately, in serial.
+SYCL needs its own buffer allocated on the device, [[sycl_buffer]].
+TODO: does [[sycl_buffer]] need to be freed somehow?
+<<Run benchmark with SYCL>>=
+unsigned buffer_size = hashes_per_block * digest_size[algorithm];
+unsigned char *sycl_buffer = malloc_device<unsigned char>(buffer_size, q);
+<<Ensure [[sycl_buffer]] allocation was successful>>
+for (uint64_t i = 0, base = 0; i < num_blocks; i++, base += hashes_per_block) {
+	<<Offload hashing and copy back>>
+}
+@ The call to [[sycl_buffer]] can fail, and it’s painful to debug without
+a warning.
+<<Ensure [[sycl_buffer]] allocation was successful>>=
+if (sycl_buffer == nullptr) {
+	fprintf(stderr, "sycl::malloc_device failed when called %u bytes were "
+			"requested.\n", buffer_size);
+	exit(1);
+}
+@ Hashes are offloaded with a parallel for loop, and copied back via
+[[queue::memcpy]].
+The last event, the copy, must be explicitly waited for.
+The algorithm must be a local variable, otherwise the SYCL compiler
+will complain.
+<<Offload hashing and copy back>>=
+enum algorithm alg = algorithm;
+event hashes_ev = q.parallel_for(range<1>(hashes_per_block), [=] (id<1> idx) {
+	run_hash(alg, base + idx, sycl_buffer, idx);
+});
+event copy_ev = q.memcpy(host_buffer, sycl_buffer, buffer_size, hashes_ev);
+copy_ev.wait();
+dump(host_buffer, hashes_per_block, digest_size[algorithm]);
 @ \subsection{SHA-224 Hash Algorithm}
 The SHA-224 algorithm used here comes from an implementation that I found
 online.\footnote{\tt http://www.zedwood.com/article/cpp-sha224-function}
