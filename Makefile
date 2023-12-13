@@ -13,6 +13,8 @@ CXX = syclcc
 SYCLFLAGS = --hipsycl-targets=omp
 CPPFLAGS = -D_XOPEN_SOURCE=700
 CXXFLAGS = -std=c++17 -g -Wall -Wextra -Wpedantic -fopenmp $(SYCLFLAGS)
+LDFLAGS = -fopenmp $(SYCLFLAGS)
+LDLIBS = -lstdc++
 
 -include config.mk
 
@@ -42,7 +44,10 @@ report.ps: report.ms $(pictures)
 %.pdf: %.ps
 	ps2pdf $< $@
 
-bench: $(sources) blake3_avx512.o blake3_avx2.o blake3_sse41.o blake3_sse2.o
+%: %.o
+	$(CXX) $(LDFLAGS) -o $@ $^ $(LDLIBS)
+
+bench: $(sources:cpp=o) blake3_avx512.o blake3_avx2.o blake3_sse41.o blake3_sse2.o
 
 blake3_avx512.o: CFLAGS += -mavx512vl -mavx512f
 blake3_avx2.o: CFLAGS += -mavx2

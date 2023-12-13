@@ -10,6 +10,7 @@ The structure of the source file is listed below.
 #include <ctime>
 #include <cstdint>
 #include <sycl/sycl.hpp>
+#include <omp.h>
 <<Additional headers>>
 <<Macro definitions>>
 <<Type definitions>>

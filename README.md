@@ -1,14 +1,17 @@
 This repository includes a program to benchmark for hash generation and
 a report of the results of a handful of machines and configurations.
 
-The benchmark program, built to ./bench, measures the performance of
-several hashing algorithms (SHA-224, SHA-256, and BLAKE3) to fill a
-buffer with hashes of 64-bit integers, running on the CPU and GPU. It
-also compares the efficiency of different buffer sizes to generate a
-target total number of hashes.
+The benchmark program will generate a specified number of hashes in
+a buffer (one "block"). Nonces for the hashes are a 64-bit integer
+corresponding to the position in the block. No other information is stored
+with the hash. Once the block is full, the program will either discard
+the hashes or print them to a file, depending on the configuration. The
+program will repreat this for a set number of blocks. See usage.
 
 The report, built to report.ps and report.pdf, contains the results of
 running ./bench on a few different machines with different CPUs and GPUs.
+
+The source code documentation can be found in source.pdf.
 
 Known Issues
 ------------
@@ -27,21 +30,17 @@ Source Files & Structure
 The following list describes the list of files that are included in
 the repository, and descriptions of their purpose.
 
-Makefile
-	Describes the build process for Make.
+- Makefile: Describes the build process for Make.
+- flake.nix, flake.lock: A Nix flake that includes dependencies and a
+reproducible shell environment.
 
-flake.nix, flake.lock
-	A Nix flake that includes dependencies and a reproducible shell
-	environment.
+- *.nw: Literate source code for the program, script, and documentation.
 
-*.nw	Literate source code for the program, script, and documentation.
+- sha2*, blake3*: Source code and headers for the SHA-2 and BLAKE3
+hash functions. These were taken from implmentations found online,
+and modified to work with SYCL.
 
-sha2*, blake3*
-	Source code and headers for the SHA-2 and BLAKE3 hash functions.
-	These were taken from implmentations found online, and modified
-	to work with SYCL.
-
-*.d	Graphs for the report in grap(1) format.
+- *.d: Graphs for the report in grap(1) format.
 
 As mentioned, this project uses [Nix][1] for dependency management
 and development environments.  Nix was chosen because it is able to pin
@@ -71,6 +70,8 @@ With Nix, use the development shell.
 	nix develop
 
 Otherwise, the following programs are needed to compile bench:
+(pre-generated source files are included so noweb is not necessary to
+get it up-and-running)
 
 - Noweb
 - A SYCL-aware C++ compiler: Intel DPC++, AdaptiveCpp, etc.
@@ -80,6 +81,7 @@ The following programs are needed to the compile the report:
 - GNU roff
 - A version of grap(1), such as the one from plan9port
 - Ghostscript
+- TeXLive
 
 Compiling and Configuration
 ---------------------------
@@ -93,7 +95,7 @@ the following should build a working program and the report:
 
 To compile just the benchmark and necessary scripts:
 
-	make bench run-bench.sh to-grap.sh generate-inputs.sh
+	make bench run-bench.sh check-dumps.sh generate-inputs.sh
 
 Compilation options can be customized with a file called config.mk.
 It is loaded by the makefile after the compilation variables are set, so
@@ -148,6 +150,55 @@ The following generation methods are recognized:
 - `sycl-cpu`
 - `sycl-gpu`
 
-The program writes its input parameters and elapsed time to run the
-benchmark to the standard output. Fields are separated by tabs, and the
-"meaningful" fields are the second, fourth, sixth, eighth, and tenth.
+When the program has finished it will output one line containing the
+following tab-separated fields:
+
+1. The string `hashes_per_block =`.
+2. The first argument.
+3. The string `num_blocks =`.
+4. The second argument.
+5. The string `algorithm =`.
+6. The third argument.
+7. The string `runner =`.
+8. The fourth argument.
+9. The string `elapsed (s) =`
+10. The real-time seconds that passed during the benchmark.
+
+Example: time how long it takes to generate 100 blocks containing 1024
+BLAKE3 hashes each on the CPU with SYCL.
+
+	./bench 1024 100 blake3 sycl-cpu
+
+Support Scripts
+---------------
+
+Run-bench.sh reads lines from standard input that contain the first two
+arguments two bench, and runs bench with those arguments and `blake3`,
+`sha256`, `sycl-cpu`, and `sycl-gpu`.
+
+Use with generate-inputs.sh
+
+Generate-inputs.sh takes two arguments:
+
+1. The total amount of hashes to generate in bytes, expressed as a power
+of two (e.g., `34` is interpreted as 2<sup>34</sup>B or 16GiB).
+2. The maximum block size in bytes, expressed as a power of two (e.g.,
+`31` is interpreted as 2<sup>31</sup> or 2GiB).
+
+It prints input lines for run-bench.sh that will generate the specified
+amount of hashes in varying block sizes, starting from 1024 hashes/block
+to the specified limit.
+
+Example: run bench with varying block sizes to generate 16GiB of hashes.
+
+	./generate-inputs 34 31 | run-bench.sh | tee bench-results
+
+To-grap.sh is a filter to turn bench-results (see above) into input for
+grap. It doesn't work very well.
+
+When compiled with dumping enabled, check-dumps.sh can be used to verify
+that all runners are generating the same hashes.
+
+Example:
+
+	./check-dumps.sh
